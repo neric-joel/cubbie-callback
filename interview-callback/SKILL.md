@@ -125,7 +125,9 @@ Run `question` (add `--tone tough` if they asked, `--term "<skill>"` to practice
 as the one waiting for an answer.
 
 - **Now, by text**: send `text_version`.
-- **As a call**: create a one-time call at the time they picked. A scheduled call runs later on its own, so put the
+- **As a call**: before the first mock call, text the student the number the call will come from and suggest
+  saving it as a contact named "Cubbie": carriers label unknown numbers "Scam Likely", and students don't pick those
+  up. Then create a one-time call at the time they picked. A scheduled call runs later on its own, so put the
   question in it word for word:
 
   ```text
