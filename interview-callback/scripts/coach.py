@@ -51,7 +51,7 @@ def slug(text, n=40):
 NICE_HDR = re.compile(r"(prefer|nice[- ]to[- ]have|bonus|\bplus\b|desired|extra credit|not required|good to have)")
 MUST_HDR = re.compile(r"(requirement|qualification|must[- ]have|you have|you'?ll need|you will need|what you need|"
                       r"looking for|what we look for|who you are|about you|minimum|basic|required|skills|"
-                      r"you bring|you'?ll bring|ideal candidate|you might be a fit|you may be a fit)")
+                      r"you bring|you'?ll bring|ideal candidate|you might be a fit|you may be a fit|\brequire\b)")
 ROLE_HDR = re.compile(r"(responsib|what you'?ll do|what you will do|the role|the job|about the (team|role|job|position)|"
                       r"your impact|day[- ]to[- ]day|in this role|you will|the opportunity|what you'?ll work on|"
                       r"job description|^description|overview|summary|the team|projects|"
@@ -189,14 +189,16 @@ def _names(terms, cap=4):
 
 FACTS = [
     ("pay", re.compile(r"\$\s?\d[\d,.]*\s*(k\b)?\s*(/\s?h(ou)?r|per hour|an hour|hourly|/\s?(yr|year)|per year|a year|"
-                       r"annually|usd|-\s?\$|to \$)|(pay|salary|compensation|hourly rate|base)[^.]{0,40}\$\s?\d|"
+                       r"/\s?mo(nth)?\b|per month|a month|monthly|annually|usd|-\s?\$|to \$|\+)|"
+                       r"(pay|salary|compensation|rate|base|stipend)[^.]{0,60}\$\s?\d|"
                        r"\b\d{2,3}(?:,\d{3})+(?:\.\d+)?\s*USD\b", re.I)),
     ("graduation", re.compile(r"(graduat\w*|conferral|class of|degree by|enrolled)[^.]{0,80}?(20\d\d)|(20\d\d)[^.]{0,40}graduat",
                              re.I)),
     ("experience", re.compile(r"\b\d+\+?\s*(years?|yrs)\b(?!\s*(?:old|of age))", re.I)),
     ("work authorization", re.compile(r"(sponsorship|work authori[sz]ation|authori[sz]ed to work|work visa|"
                                       r"visa sponsorship|\b(?-i:CPT|OPT)\b|u\.?s\.? citizen|citizenship|"
-                                      r"security clearance|\bitar\b|export control)", re.I)),
+                                      r"security clearance|\bitar\b|export control|(?:will not|won't|cannot|unable to|"
+                                      r"does not|do not) (?:provide )?sponsor)", re.I)),
     ("interview process", re.compile(r"(interview (?:process|rounds?|loop|stages?)|\b\d+ rounds?\b|hackerrank|codesignal|"
                                      r"take[- ]home|coding challenge|online assessment)", re.I)),
     ("where you work", re.compile(r"(in[- ]office|hybrid|remote|on[- ]?site|days a week|relocat)", re.I)),
@@ -205,7 +207,8 @@ FACTS = [
 ]
 
 GATES = re.compile(r"(top secret|ts/sci|secret clearance|security clearance|u\.?s\.? citizenship (?:is )?required|"
-                   r"must be a u\.?s\.? citizen|active clearance|polygraph)", re.I)
+                   r"must be a u\.?s\.? citizen|active clearance|polygraph|(?:will not|won't|cannot|unable to|"
+                   r"does not|do not) (?:provide )?sponsor)", re.I)
 
 
 def gates(lines):
@@ -225,6 +228,7 @@ ASK_RECRUITER = {
 }
 
 
+PAY_WORD = re.compile(r"\b(pay|salary|compensation|hourly|rate|base|wage)\b|/\s?h(ou)?r|per hour|/\s?mo", re.I)
 PERKS = re.compile(r"(\bhra\b|fertility|stipend|reimburs|401|perks?\b|discount|wellness|gym|commuter|\bpto\b|"
                    r"time off|holiday|vacation|sick)", re.I)
 
@@ -234,8 +238,10 @@ def facts(lines):
     out = {}
     for name, rx in FACTS:
         for i, (line, sec) in enumerate(zip(lines, secs), start=1):
-            if sec == "heading" or (sec in ("legal", "about") and name not in ("pay", "where you work")) or \
-                    (name in ("pay", "where you work", "start date") and PERKS.search(line)):
+            in_text = name in ("pay", "where you work", "work authorization", "start date")
+            if sec == "heading" or (sec in ("legal", "about") and not in_text) or \
+                    (name in ("where you work", "start date") and PERKS.search(line)) or \
+                    (name == "pay" and PERKS.search(line) and not PAY_WORD.search(line)):
                 continue
             m = rx.search(line)
             if m:
@@ -258,15 +264,28 @@ qualified ability status location locations benefits salary salaries relocation 
 compensation bonus equity health insurance eligible offer offers""".split())
 
 
+CAPS_STOP = set("""The We Our You Your In At As This That These For With And Or If When Join Apply About Who What
+Why How Summer Fall Spring Winter Intern Interns Internship Internships Program Software Engineer Engineering
+Engineers Team Teams US USA United States Inc LLC Corp Corporation Company Monday Tuesday Wednesday Thursday Friday
+January February March April May June July August September October November December Equal Opportunity
+Bachelor Bachelors Master Masters PhD Degree University College Students Student Candidates Pay Benefits Location
+Remote Hybrid Onsite New Today Year Years Day Days Job Jobs Role Roles Position Positions Minimum Preferred Basic
+Qualifications Requirements Responsibilities Experience Skills Ability""".split())
+
+
 def posting_keywords(lines, company, limit=6):
-    """Distinctive words from the intro and about-the-company lines, for "something specific about us"."""
+    """Product, platform or team names from the posting (Foundry, AWS, Payments Core), for "something specific"."""
     secs = sections(lines)
-    picked = [l for l, s in zip(lines, secs) if s in ("intro", "about") and not PERKS.search(l)
-              and not FACTS[0][1].search(l)][:12] or [l for l, s in zip(lines, secs) if s != "legal"][:8]
+    picked = [l for l, s in zip(lines, secs) if s in ("intro", "about", "role") and not PERKS.search(l)
+              and not FACTS[0][1].search(l)][:40]
     skip = {w.lower() for w in re.findall(r"[A-Za-z]+", company or "")}
-    words = [w for w in re.findall(r"[a-z][a-z-]{4,}", " ".join(picked).lower())
-             if w not in STOP and w not in skip and not w.endswith("ly")]
-    return [w for w, n in Counter(words).most_common(limit) if n >= 2]
+    names = []
+    for line in picked:
+        for m in re.finditer(r"(?<![.!?]\s)(?<!^)\b([A-Z][A-Za-z0-9]+(?: [A-Z][A-Za-z0-9]+){0,2})", line):
+            words = [w for w in m.group(1).split() if w not in CAPS_STOP and w.lower() not in skip]
+            if words and len(" ".join(words)) > 2:
+                names.append(" ".join(words))
+    return [w for w, _ in Counter(names).most_common(limit)]
 
 
 # ---------------------------------------------------------------- brief
@@ -555,7 +574,9 @@ def score_answer(question, answer):
 REJECT = re.compile(r"(we (?:will|are|have) (?:not|decided not)[^.]{0,30}(?:moving forward|proceed|pursue)|"
                     r"decided not to (?:move|proceed)|(?:won'?t|will not|are not) (?:be )?(?:moving forward|proceeding|"
                     r"extending)|not (?:be )?moving forward with your|(?:decided|chosen) to (?:pursue|move forward with) "
-                    r"other|moving forward with other (?:candidates|applicants)|unable to offer|extending an offer|"
+                    r"other|moving forward with (?:other|another) (?:candidates?|applicants?)|unable to offer|"
+                    r"extending an offer|filled the (?:role|position)|not able to move you forward|go with other "
+                    r"(?:candidates|applicants)|won'?t be able to invite you|go in a different direction|"
                     r"position has been filled|we regret to inform|"
                     r"not been selected|were not selected)", re.I)
 RESCHEDULE = re.compile(r"(reschedul|original time|move your interview|new time|different time)", re.I)
@@ -576,7 +597,8 @@ NOT_COMPANY = {"gmail", "outlook", "hotmail", "yahoo", "icloud", "greenhouse", "
 def classify_email(text, parse_link):
     """Is this an interview invite, a request to schedule, an assessment, a rejection, or something else?"""
     signals = []
-    if REJECT.search(text) and not RESCHEDULE.search(text):
+    if (REJECT.search(text) or (re.search(r"\bunfortunately\b", text, re.I) and not CONFIRMED.search(text)
+                                and not SCHEDULE.search(text))) and not RESCHEDULE.search(text):
         category = "rejection"
         signals.append("rejection wording")
     elif ASSESS.search(text) and not CONFIRMED.search(text):

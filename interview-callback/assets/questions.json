@@ -2740,6 +2740,63 @@
           }
         ]
       }
+    ],
+    "AI-assisted development": [
+      {
+        "id": "ai-tools-1",
+        "q": "The posting asks you to use AI tools while you code. How do you use them, and how do you check that what they write is right?",
+        "points": [
+          {
+            "label": "a concrete way you use them",
+            "any": [
+              "generate",
+              "boilerplate",
+              "tests",
+              "explain",
+              "refactor",
+              "autocomplete",
+              "copilot",
+              "claude",
+              "chatgpt",
+              "cursor"
+            ]
+          },
+          {
+            "label": "you verify the output",
+            "any": [
+              "review",
+              "verify",
+              "test",
+              "check",
+              "read every line",
+              "run it",
+              "compare"
+            ]
+          },
+          {
+            "label": "where you don't trust them",
+            "any": [
+              "security",
+              "edge case",
+              "hallucinat",
+              "wrong",
+              "don't trust",
+              "careful",
+              "not always"
+            ]
+          },
+          {
+            "label": "you stay accountable for the code",
+            "any": [
+              "my responsibility",
+              "i own",
+              "understand",
+              "accountable",
+              "explain it"
+            ]
+          }
+        ]
+      }
     ]
   }
 }

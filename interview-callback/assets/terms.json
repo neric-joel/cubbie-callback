@@ -880,6 +880,24 @@
         "mentoring"
       ],
       "not": "leadership (team|experiences? (with|at)|development program)|senior leadership|executive leadership"
+    },
+    {
+      "term": "AI-assisted development",
+      "cat": "tool",
+      "aliases": [
+        "ai tools",
+        "ai-assisted",
+        "ai assisted",
+        "ai coding",
+        "ai coding tools",
+        "ai-powered development",
+        "copilot",
+        "github copilot",
+        "coding assistants",
+        "ai development tools",
+        "leverage ai",
+        "use ai"
+      ]
     }
   ]
 }

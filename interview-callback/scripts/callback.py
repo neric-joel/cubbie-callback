@@ -120,9 +120,14 @@ def load(sd, rid):
     return recs[0]
 
 
+_LAST_TS = [0.0]
+
+
 def save(sd, rec):
     rec["updated_at"] = now()
-    rec["updated_ts"] = time.time()
+    # strictly increasing, so "the most recent interview" never ties within one clock tick
+    newest = max([r.get("updated_ts", 0) for r in all_records(sd)] + [_LAST_TS[0]])
+    rec["updated_ts"] = _LAST_TS[0] = max(time.time(), newest + 1e-6)
     f = record_path(sd, rec["id"])
     tmp = f.with_name(f".{f.stem}.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -227,7 +232,8 @@ def _from_candidates(sd, a, cands, company):
     out = summary(rec, "matched")
     out["matched_title"], out["match"] = pick["title"], pick["score"]
     others = sorted({str(c.get("location")) for c in cands if boards.same_role(c["title"], pick["title"])
-                     and c is not pick and c.get("location") != pick.get("location")})
+                     and c is not pick and c.get("location") != pick.get("location")
+                     and (boards.is_us(c.get("location")) or not boards.is_us(pick.get("location")))})
     if others:
         out["other_offices"] = others[:8]
     if a.location and not boards.location_matches(a.location, pick.get("location")):
@@ -312,7 +318,8 @@ def cmd_brief(a, sd):
     save(sd, rec)
     return {"ok": True, "id": rec["id"], "brief_path": str(out_path), "headline": coach.headline(rec),
             "texts": coach.brief_texts(rec),
-            "next": "Turn brief_path into a one-page PDF or Google Doc and send it after these texts."}
+            "next": "Turn brief_path into a PDF or Google Doc (the brief first, the numbered posting after) and send "
+                    "it after these texts."}
 
 
 def _best_scores(rec):
@@ -375,8 +382,15 @@ def cmd_score(a, sd):
                    candidates=[{"id": r["id"], "company": r["posting"]["company"], "title": r["posting"]["title"],
                                 "question": (r.get("questions") or {}).get(r["pending_question"], {}).get("question")}
                                for r in waiting[:4]])
-    rec = waiting[0] if waiting else load(sd, a.id)
+    if a.credit and not a.id:
+        # a credit belongs to the answer just scored, wherever other questions are still waiting
+        scored = [r for r in all_records(sd) if r.get("scores")]
+        rec = max(scored, key=lambda r: r["scores"][-1]["at"]) if scored else load(sd, None)
+    else:
+        rec = waiting[0] if waiting else load(sd, a.id)
     qid = a.question_id or rec.get("pending_question") or rec.get("last_question")
+    if a.credit and not a.question_id and rec.get("last_question"):
+        qid = rec["last_question"]
     q = (rec.get("questions") or {}).get(qid or "")
     if not q:
         raise Stop("bad_input", "no question is waiting for an answer",
@@ -399,14 +413,27 @@ def cmd_score(a, sd):
     before = None if follow else _best_scores(rec).get(qid)
     result = coach.score_answer(q, answer)
     if follow:
+        # The follow-up answers part of the same question: fold what it covered into that question's last score.
         result["tips"] = []
         result["follow_up_of"] = qid
-    rec.setdefault("scores", []).append({"at": now(), "question_id": qid, "covered": result["covered"],
-                                         "total": result["total"], "verdict": result["verdict"], "missed": result["missed"]})
+        row = next((s for s in reversed(rec.get("scores", [])) if s["question_id"] == qid), None)
+        for p in result["points"]:
+            if p["covered"] and row and p["point"] in row["missed"]:
+                row["missed"].remove(p["point"])
+                row["covered"] += 1
+        if row:
+            ratio = row["covered"] / row["total"]
+            row["verdict"] = "strong" if ratio >= 0.75 else "solid" if ratio >= 0.5 else "needs work"
+    else:
+        rec.setdefault("scores", []).append({"at": now(), "question_id": qid, "covered": result["covered"],
+                                             "total": result["total"], "verdict": result["verdict"],
+                                             "missed": result["missed"]})
     rec.pop("pending_question", None)
     rec.pop("follow_up", None)
     rec["last_question"] = qid
     head = f"{result['covered']}/{result['total']} key points: {result['verdict']}."
+    if follow:
+        head = "Follow-up: got it." if not result["missed"] else "Follow-up: not quite."
     if before:
         head = f"{before['covered']}/{before['total']} last time, {result['covered']}/{result['total']} now: {result['verdict']}."
         result["progress"] = f"{before['covered']}/{before['total']} -> {result['covered']}/{result['total']}"
@@ -426,13 +453,16 @@ def cmd_score(a, sd):
         if rec.get("tone") == "tough" and not follow:
             result["follow_up"] = f"Follow-up: you didn't cover {result['missed'][0]}. How would you handle that here?"
             texts.append(result["follow_up"])
-            rec["follow_up"] = {"question_id": qid, "points": result["missed"]}
+            rec["follow_up"] = {"question_id": qid, "points": result["missed"][:1]}
             rec["pending_question"] = qid
     save(sd, rec)
     texts += result["tips"][:2]
-    result.update({"ok": True, "id": rec["id"], "texts": texts,
-                   "next": "Send the texts one by one. Then offer a redo of this question (question --retry) or the "
-                           "next one (question), each as a scheduled check-in at a time the student picks."})
+    nxt = ("Send the texts one by one. Then offer a redo of this question (question --retry) or the next one "
+           "(question), each as a scheduled check-in at a time the student picks.")
+    if rec.get("follow_up"):
+        nxt = ("Send the texts one by one; the last is a follow-up question. Wait for the student's reply, then run "
+               "score again with it (it grades only the follow-up).")
+    result.update({"ok": True, "id": rec["id"], "texts": texts, "next": nxt})
     return result
 
 
@@ -477,6 +507,8 @@ def cmd_list(a, sd):
                       "when": r.get("when"), "questions_asked": len(r.get("asked", [])),
                       "waiting_for_answer": r.get("pending_question"),
                       "last_score": f"{last['covered']}/{last['total']}" if last else None,
+                      "questions": [{"id": qid, "term": (r.get("questions") or {}).get(qid, {}).get("term")}
+                                    for qid in r.get("asked", [])],
                       "weak_spots": sorted({m for s in {x["question_id"]: x for x in r.get("scores", [])}.values()
                                             for m in s["missed"]})[:5]})
     return {"ok": True, "interviews": items}

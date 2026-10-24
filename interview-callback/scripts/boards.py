@@ -904,7 +904,7 @@ INTERN = re.compile(r"\b(intern(?:s|ships?)?|co-?ops?|apprentice\w*|summer (?:an
 
 def _workday_offices(cands):
     """Workday lists a posting with several offices as '5 Locations'; read the real ones for the top few."""
-    for c in cands[:6]:
+    for c in cands[:12]:
         f = c["fetch"]
         if f["board"] == "workday" and re.fullmatch(r"\d+ Locations", str(c.get("location") or "")):
             try:
@@ -994,8 +994,10 @@ def choose(candidates, min_score=0.75, margin=0.06, location=None):
     if not us and not location:
         # Nothing for this exact title in the US: a US posting that has every word of the role still beats it.
         alt = [c for c in candidates if is_us(c.get("location")) and (c.get("covers") or c["score"] >= top["score"] - 0.15)]
-        if alt:
+        if alt and all(same_role(c["title"], alt[0]["title"]) for c in alt):
             return alt[0]
+        if alt:
+            return None  # several different US roles: the student picks
     return (us or same)[0]
 
 

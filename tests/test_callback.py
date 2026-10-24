@@ -279,7 +279,7 @@ class TestFlow(Base):
                   "https://api.lever.co/v0/postings/acme": (404, ""), "https://api.ashbyhq.com": (404, "")})
         code, out = run("fetch", "--company", "Acme", "--role", "SWE intern")
         self.assertEqual((code, out["status"]), (0, "matched"))
-        self.assertEqual(out["other_offices"], ["London"])
+        self.assertNotIn("other_offices", out)  # London isn't worth mentioning when the pick is in the US
         self.assertTrue(boards.http_get.calls[-1].endswith("/jobs/2"))
 
     def test_search_ambiguous_and_not_found(self):
@@ -581,8 +581,11 @@ class TestRound2(Base):
         self.assertEqual(first["total"], 4)
         code, out = run("score", "--sample", "--answer", "I'd store an idempotency key for every payment in a table and "
                         "check it before charging, so a duplicate event is skipped.")
-        self.assertEqual((code, out["total"], out["covered"], out.get("follow_up_of")), (0, 2, 2, "kafka-1"))
+        self.assertEqual((code, out["total"], out["covered"], out.get("follow_up_of")), (0, 1, 1, "kafka-1"))
         self.assertNotIn("follow_up", out)
+        # the follow-up folded into the question's score: 2/4 became 3/4, and a redo is still possible
+        self.assertEqual(run("list", "--sample")[1]["interviews"][0]["last_score"], "3/4")
+        self.assertEqual(run("question", "--sample", "--retry")[0], 0)
 
     def test_credit_counts_a_paraphrased_point(self):
         run("fetch", "--sample")
