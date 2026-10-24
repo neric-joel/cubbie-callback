@@ -1,0 +1,29 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests (offline)
+        run: python -m unittest discover -s tests -v
+      - name: Sample run, as Cubbie would
+        run: |
+          cd interview-callback
+          export INTERVIEW_CALLBACK_HOME="$(mktemp -d)"
+          python3 scripts/callback.py fetch --sample
+          python3 scripts/callback.py brief --sample
+          python3 scripts/callback.py question --sample --tone tough
+          python3 scripts/callback.py score --sample
+      - name: Cubbie Skill checks (cubbie-hackathon-kit validator)
+        run: |
+          pip install pyyaml==6.0.2
+          curl -sSfL -o /tmp/validate_cubbie_skill.py https://raw.githubusercontent.com/imaginix-inc/cubbie-hackathon-kit/main/skills/cubbie-skill-creator/scripts/validate_cubbie_skill.py
+          python /tmp/validate_cubbie_skill.py interview-callback

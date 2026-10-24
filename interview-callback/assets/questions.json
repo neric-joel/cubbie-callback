@@ -1,0 +1,2733 @@
+{
+  "_about": "Mock-interview questions keyed by a term in terms.json. Each point lists phrases that show the answer covered it (matched case-insensitively). star: true adds the STAR points below. {company} and {term} are filled in.",
+  "star_points": [
+    {
+      "label": "set the scene (situation)",
+      "any": [
+        "when i",
+        "last semester",
+        "last year",
+        "last summer",
+        "this semester",
+        "during",
+        "at my",
+        "in my",
+        "in our",
+        "class",
+        "club",
+        "internship",
+        "hackathon",
+        "project"
+      ]
+    },
+    {
+      "label": "what you did, in first person",
+      "any": [
+        "i decided",
+        "i built",
+        "i wrote",
+        "i led",
+        "i talked",
+        "i proposed",
+        "i took",
+        "i asked",
+        "i set up",
+        "i created",
+        "i reached out",
+        "i suggested",
+        "i organized",
+        "i fixed",
+        "i made",
+        "i spent",
+        "i scheduled",
+        "i explained",
+        "i figured",
+        "i started",
+        "i changed",
+        "i tested",
+        "i designed",
+        "i pushed"
+      ]
+    },
+    {
+      "label": "the result, ideally a number",
+      "any": [
+        "result",
+        "in the end",
+        "ended up",
+        "outcome",
+        "we shipped",
+        "we finished",
+        "improved",
+        "reduced",
+        "increased",
+        "saved",
+        "won",
+        "launched",
+        "got an a",
+        "on time"
+      ],
+      "number": true
+    },
+    {
+      "label": "what you learned",
+      "any": [
+        "learned",
+        "learnt",
+        "next time",
+        "differently",
+        "takeaway",
+        "now i",
+        "since then",
+        "taught me",
+        "realized"
+      ]
+    }
+  ],
+  "generic_tech": {
+    "q": "The posting asks for {term}. Walk me through a project where you used it: what you built, one decision you made, and how it turned out.",
+    "points": [
+      {
+        "label": "names {term} and what you built with it",
+        "term": true
+      },
+      {
+        "label": "a specific decision and why",
+        "any": [
+          "because",
+          "so that",
+          "instead of",
+          "trade-off",
+          "tradeoff",
+          "chose",
+          "decided",
+          "picked",
+          "the reason"
+        ]
+      },
+      {
+        "label": "a measurable result",
+        "any": [
+          "improved",
+          "reduced",
+          "faster",
+          "users",
+          "shipped",
+          "launched"
+        ],
+        "number": true
+      },
+      {
+        "label": "what you'd do differently",
+        "any": [
+          "next time",
+          "differently",
+          "learned",
+          "would change",
+          "in hindsight",
+          "looking back",
+          "if i did it again"
+        ]
+      }
+    ]
+  },
+  "company": [
+    {
+      "id": "why-company",
+      "q": "Why {company}, and why this role in particular?",
+      "points": [
+        {
+          "label": "names {company}",
+          "company": true
+        },
+        {
+          "label": "something specific from the posting",
+          "posting_keywords": true
+        },
+        {
+          "label": "connects it to your own experience",
+          "any": [
+            "my project",
+            "my internship",
+            "i built",
+            "i worked",
+            "in my",
+            "my experience",
+            "i've been",
+            "i have been"
+          ]
+        },
+        {
+          "label": "what you want to learn or contribute",
+          "any": [
+            "learn",
+            "grow",
+            "contribute",
+            "impact",
+            "help",
+            "build"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tell-me",
+      "q": "Tell me about yourself in under a minute, and tie it to this role at {company}.",
+      "points": [
+        {
+          "label": "who you are now",
+          "any": [
+            "i'm a",
+            "i am a",
+            "currently",
+            "studying",
+            "major",
+            "junior",
+            "senior",
+            "sophomore",
+            "freshman",
+            "graduate"
+          ]
+        },
+        {
+          "label": "one relevant project or job",
+          "any": [
+            "project",
+            "internship",
+            "built",
+            "worked",
+            "research",
+            "hackathon"
+          ]
+        },
+        {
+          "label": "a skill the posting asks for",
+          "top_term": true
+        },
+        {
+          "label": "why this role",
+          "any": [
+            "this role",
+            "this position",
+            "this team",
+            "why",
+            "excited"
+          ],
+          "company_ok": true
+        }
+      ]
+    }
+  ],
+  "terms": {
+    "Python": [
+      {
+        "id": "python-1",
+        "q": "In Python, what's the difference between a list and a tuple, and when would you use a dictionary or a set instead?",
+        "points": [
+          {
+            "label": "lists change, tuples don't (mutability)",
+            "any": [
+              "mutable",
+              "immutable",
+              "can't change",
+              "cannot change",
+              "can change",
+              "can't be changed"
+            ]
+          },
+          {
+            "label": "fast lookups by hashing",
+            "any": [
+              "hash",
+              "constant time",
+              "o(1)",
+              "fast lookup",
+              "lookup"
+            ]
+          },
+          {
+            "label": "dicts map keys to values",
+            "any": [
+              "key",
+              "keys",
+              "key-value",
+              "mapping"
+            ]
+          },
+          {
+            "label": "sets keep unique items",
+            "any": [
+              "unique",
+              "duplicate",
+              "membership",
+              "dedupe"
+            ]
+          }
+        ]
+      }
+    ],
+    "Java": [
+      {
+        "id": "java-1",
+        "q": "In Java, how do HashMap and TreeMap differ, and what happens when two keys have the same hash code?",
+        "points": [
+          {
+            "label": "TreeMap keeps keys sorted",
+            "any": [
+              "sorted",
+              "order",
+              "red-black",
+              "tree"
+            ]
+          },
+          {
+            "label": "time complexity of each",
+            "any": [
+              "o(1)",
+              "constant",
+              "log n",
+              "o(log",
+              "logarithmic"
+            ]
+          },
+          {
+            "label": "how collisions are handled",
+            "any": [
+              "collision",
+              "bucket",
+              "linked list",
+              "chaining"
+            ]
+          },
+          {
+            "label": "the equals/hashCode contract",
+            "any": [
+              "equals",
+              "hashcode",
+              "hash code"
+            ]
+          }
+        ]
+      }
+    ],
+    "C++": [
+      {
+        "id": "cpp-1",
+        "q": "In C++, what problem do smart pointers solve, and when would you use unique_ptr versus shared_ptr?",
+        "points": [
+          {
+            "label": "ownership and leaks (RAII)",
+            "any": [
+              "leak",
+              "ownership",
+              "raii",
+              "delete",
+              "dangling",
+              "free"
+            ]
+          },
+          {
+            "label": "unique_ptr has one owner",
+            "any": [
+              "unique",
+              "single owner",
+              "one owner",
+              "move"
+            ]
+          },
+          {
+            "label": "shared_ptr counts references",
+            "any": [
+              "shared",
+              "reference count",
+              "ref count",
+              "multiple owners"
+            ]
+          },
+          {
+            "label": "cycles and weak_ptr",
+            "any": [
+              "cycle",
+              "weak_ptr",
+              "weak pointer",
+              "weak ptr"
+            ]
+          }
+        ]
+      }
+    ],
+    "JavaScript": [
+      {
+        "id": "js-1",
+        "q": "Explain how JavaScript handles a slow network call without freezing the page.",
+        "points": [
+          {
+            "label": "the event loop",
+            "any": [
+              "event loop",
+              "call stack"
+            ]
+          },
+          {
+            "label": "callbacks, promises or async/await",
+            "any": [
+              "callback",
+              "promise",
+              "async",
+              "await"
+            ]
+          },
+          {
+            "label": "the task queue",
+            "any": [
+              "queue",
+              "microtask",
+              "macrotask"
+            ]
+          },
+          {
+            "label": "single-threaded but non-blocking",
+            "any": [
+              "non-blocking",
+              "doesn't block",
+              "does not block",
+              "single thread",
+              "single-threaded"
+            ]
+          }
+        ]
+      }
+    ],
+    "TypeScript": [
+      {
+        "id": "ts-1",
+        "q": "What does TypeScript catch that plain JavaScript doesn't, and when would you use an interface versus a union type?",
+        "points": [
+          {
+            "label": "errors at compile time",
+            "any": [
+              "compile",
+              "before runtime",
+              "build time",
+              "static"
+            ]
+          },
+          {
+            "label": "type safety",
+            "any": [
+              "type safety",
+              "type error",
+              "types"
+            ]
+          },
+          {
+            "label": "interfaces describe object shapes",
+            "any": [
+              "interface",
+              "shape",
+              "object"
+            ]
+          },
+          {
+            "label": "unions allow one of several types",
+            "any": [
+              "union",
+              "either",
+              "one of"
+            ]
+          }
+        ]
+      }
+    ],
+    "React": [
+      {
+        "id": "react-1",
+        "q": "In React, what makes a component re-render, and how would you stop a big list from re-rendering too often?",
+        "points": [
+          {
+            "label": "state or props change",
+            "any": [
+              "state",
+              "props"
+            ]
+          },
+          {
+            "label": "memoization",
+            "any": [
+              "memo",
+              "usememo",
+              "usecallback",
+              "memoize"
+            ]
+          },
+          {
+            "label": "stable keys",
+            "any": [
+              "key",
+              "keys"
+            ]
+          },
+          {
+            "label": "virtualize or paginate the list",
+            "any": [
+              "virtualiz",
+              "pagination",
+              "paginate",
+              "windowing",
+              "lazy"
+            ]
+          }
+        ]
+      }
+    ],
+    "Node.js": [
+      {
+        "id": "node-1",
+        "q": "How does Node.js serve thousands of requests on one thread, and what kind of work would block it?",
+        "points": [
+          {
+            "label": "event loop and non-blocking I/O",
+            "any": [
+              "event loop",
+              "non-blocking",
+              "async"
+            ]
+          },
+          {
+            "label": "CPU-heavy work blocks it",
+            "any": [
+              "cpu",
+              "heavy computation",
+              "synchronous",
+              "sync",
+              "image processing",
+              "big loop"
+            ]
+          },
+          {
+            "label": "move heavy work off the main thread",
+            "any": [
+              "worker",
+              "child process",
+              "cluster",
+              "queue",
+              "offload"
+            ]
+          },
+          {
+            "label": "I/O waits are cheap",
+            "any": [
+              "i/o",
+              "network",
+              "database",
+              "disk"
+            ]
+          }
+        ]
+      }
+    ],
+    "SQL": [
+      {
+        "id": "sql-1",
+        "q": "You have users and orders tables. How do you find the top 5 customers by total spend last month, and how would you make that query fast?",
+        "points": [
+          {
+            "label": "join the tables",
+            "any": [
+              "join"
+            ]
+          },
+          {
+            "label": "group and sum",
+            "any": [
+              "group by",
+              "sum"
+            ]
+          },
+          {
+            "label": "sort and limit",
+            "any": [
+              "order by",
+              "limit",
+              "top 5",
+              "top five"
+            ]
+          },
+          {
+            "label": "filter to last month",
+            "any": [
+              "where",
+              "last month",
+              "date"
+            ]
+          },
+          {
+            "label": "an index",
+            "any": [
+              "index",
+              "indexes",
+              "indices"
+            ]
+          }
+        ]
+      }
+    ],
+    "NoSQL": [
+      {
+        "id": "nosql-1",
+        "q": "When would you pick a document database like MongoDB over a relational one, and what do you give up?",
+        "points": [
+          {
+            "label": "flexible schema",
+            "any": [
+              "schema",
+              "flexible",
+              "unstructured",
+              "document"
+            ]
+          },
+          {
+            "label": "horizontal scaling",
+            "any": [
+              "scale",
+              "horizontal",
+              "shard"
+            ]
+          },
+          {
+            "label": "you give up joins or transactions",
+            "any": [
+              "join",
+              "transaction",
+              "consistency",
+              "acid"
+            ]
+          },
+          {
+            "label": "design around access patterns",
+            "any": [
+              "access pattern",
+              "query pattern",
+              "how you read",
+              "denormaliz"
+            ]
+          }
+        ]
+      }
+    ],
+    "Redis": [
+      {
+        "id": "cache-1",
+        "q": "You put a cache in front of a slow database. What can go wrong, and how do you avoid serving stale data?",
+        "points": [
+          {
+            "label": "stale data and invalidation",
+            "any": [
+              "stale",
+              "invalidat",
+              "consisten"
+            ]
+          },
+          {
+            "label": "expiry (TTL)",
+            "any": [
+              "ttl",
+              "expire",
+              "expiration",
+              "time to live"
+            ]
+          },
+          {
+            "label": "a write strategy",
+            "any": [
+              "write-through",
+              "write through",
+              "cache-aside",
+              "cache aside",
+              "write-back",
+              "write back"
+            ]
+          },
+          {
+            "label": "misses, eviction or stampedes",
+            "any": [
+              "stampede",
+              "thundering herd",
+              "hit rate",
+              "miss",
+              "eviction",
+              "lru"
+            ]
+          }
+        ]
+      }
+    ],
+    "Kafka": [
+      {
+        "id": "kafka-1",
+        "q": "A payment event gets delivered twice through a queue like Kafka. How do you make sure the customer is only charged once?",
+        "points": [
+          {
+            "label": "idempotency (a unique key per payment)",
+            "any": [
+              "idempoten",
+              "dedupe",
+              "deduplicat",
+              "unique id",
+              "unique key",
+              "already processed"
+            ],
+            "cues": [
+              "charged twice",
+              "more than once",
+              "duplicate",
+              "exactly once",
+              "exactly-once",
+              "idempoten",
+              "retries safe",
+              "dedupe"
+            ]
+          },
+          {
+            "label": "delivery guarantees",
+            "any": [
+              "at least once",
+              "at-least-once",
+              "exactly once",
+              "exactly-once",
+              "at most once"
+            ]
+          },
+          {
+            "label": "store what was processed",
+            "any": [
+              "store",
+              "database",
+              "record",
+              "processed",
+              "table",
+              "check if"
+            ]
+          },
+          {
+            "label": "offsets, acks or retries",
+            "any": [
+              "offset",
+              "retry",
+              "retries",
+              "commit",
+              "ack"
+            ]
+          }
+        ]
+      }
+    ],
+    "Spark": [
+      {
+        "id": "spark-1",
+        "q": "Your Spark job is slow because one key has far more data than the others. What's happening, and how do you fix it?",
+        "points": [
+          {
+            "label": "data skew",
+            "any": [
+              "skew",
+              "hot key",
+              "imbalanc"
+            ]
+          },
+          {
+            "label": "partitions and shuffles",
+            "any": [
+              "partition",
+              "repartition",
+              "shuffle"
+            ]
+          },
+          {
+            "label": "salting the key",
+            "any": [
+              "salt",
+              "random prefix"
+            ]
+          },
+          {
+            "label": "broadcast join or pre-aggregation",
+            "any": [
+              "broadcast",
+              "map-side",
+              "combine",
+              "pre-aggregat"
+            ]
+          }
+        ]
+      }
+    ],
+    "Data pipelines": [
+      {
+        "id": "etl-1",
+        "q": "Design a daily pipeline that loads app events into a warehouse. What happens when a run fails halfway?",
+        "points": [
+          {
+            "label": "extract, transform, load steps",
+            "any": [
+              "extract",
+              "transform",
+              "load",
+              "etl",
+              "elt"
+            ]
+          },
+          {
+            "label": "safe re-runs",
+            "any": [
+              "idempoten",
+              "rerun",
+              "re-run",
+              "backfill",
+              "overwrite",
+              "partition"
+            ]
+          },
+          {
+            "label": "alerts and retries",
+            "any": [
+              "alert",
+              "monitor",
+              "retry",
+              "logs"
+            ]
+          },
+          {
+            "label": "scheduling",
+            "any": [
+              "airflow",
+              "schedule",
+              "cron",
+              "dag",
+              "orchestrat"
+            ]
+          }
+        ]
+      }
+    ],
+    "Distributed systems": [
+      {
+        "id": "dist-1",
+        "q": "Your service runs on three servers and one dies in the middle of a request. What does the user see, and how do you design for it?",
+        "points": [
+          {
+            "label": "redundancy and failover",
+            "any": [
+              "load balancer",
+              "replica",
+              "redundan",
+              "failover",
+              "health check"
+            ]
+          },
+          {
+            "label": "timeouts and retries",
+            "any": [
+              "retry",
+              "retries",
+              "timeout",
+              "backoff"
+            ]
+          },
+          {
+            "label": "safe retries (idempotency)",
+            "any": [
+              "idempoten",
+              "duplicate",
+              "twice"
+            ]
+          },
+          {
+            "label": "consistency trade-offs",
+            "any": [
+              "consisten",
+              "cap theorem",
+              "partition",
+              "stale",
+              "eventual"
+            ]
+          }
+        ]
+      }
+    ],
+    "System design": [
+      {
+        "id": "design-1",
+        "q": "How would you design a link shortener that handles millions of clicks a day?",
+        "points": [
+          {
+            "label": "how short codes are generated",
+            "any": [
+              "hash",
+              "base62",
+              "base 62",
+              "counter",
+              "unique id",
+              "collision"
+            ]
+          },
+          {
+            "label": "where links are stored",
+            "any": [
+              "database",
+              "key-value",
+              "key value",
+              "table",
+              "store"
+            ]
+          },
+          {
+            "label": "caching hot links",
+            "any": [
+              "cache",
+              "redis",
+              "cdn"
+            ]
+          },
+          {
+            "label": "scaling reads",
+            "any": [
+              "scale",
+              "shard",
+              "replica",
+              "load balancer",
+              "read-heavy",
+              "read heavy"
+            ]
+          }
+        ]
+      }
+    ],
+    "Microservices": [
+      {
+        "id": "micro-1",
+        "q": "When would you split an app into microservices, and what new problems does that create?",
+        "points": [
+          {
+            "label": "why split (teams, deploys, scale)",
+            "any": [
+              "independent",
+              "deploy",
+              "team",
+              "scale",
+              "ownership"
+            ]
+          },
+          {
+            "label": "network failures and latency",
+            "any": [
+              "network",
+              "latency",
+              "failure",
+              "complexity",
+              "debugging"
+            ]
+          },
+          {
+            "label": "data consistency",
+            "any": [
+              "database per",
+              "consisten",
+              "transaction",
+              "saga",
+              "shared database"
+            ]
+          },
+          {
+            "label": "how services talk",
+            "any": [
+              "api",
+              "queue",
+              "event",
+              "grpc",
+              "rest"
+            ]
+          }
+        ]
+      }
+    ],
+    "APIs": [
+      {
+        "id": "api-1",
+        "q": "Design the API for a to-do app. What endpoints would you create, and how do you handle errors and versions?",
+        "points": [
+          {
+            "label": "endpoints and HTTP methods",
+            "any": [
+              "get",
+              "post",
+              "put",
+              "patch",
+              "delete",
+              "endpoint"
+            ]
+          },
+          {
+            "label": "status codes for errors",
+            "any": [
+              "status code",
+              "404",
+              "400",
+              "500",
+              "201",
+              "error code"
+            ]
+          },
+          {
+            "label": "versioning",
+            "any": [
+              "version",
+              "v1",
+              "v2",
+              "backward compat",
+              "backwards compat"
+            ]
+          },
+          {
+            "label": "auth or pagination",
+            "any": [
+              "auth",
+              "token",
+              "pagination",
+              "paginate",
+              "rate limit"
+            ]
+          }
+        ]
+      }
+    ],
+    "Data structures and algorithms": [
+      {
+        "id": "dsa-1",
+        "q": "Given a list of numbers and a target, how do you find two numbers that add up to the target, and what's the time complexity?",
+        "points": [
+          {
+            "label": "use a hash map or set",
+            "any": [
+              "hash",
+              "map",
+              "dictionary",
+              "set"
+            ]
+          },
+          {
+            "label": "linear time",
+            "any": [
+              "o(n)",
+              "linear",
+              "one pass",
+              "single pass"
+            ]
+          },
+          {
+            "label": "compare with brute force",
+            "any": [
+              "brute force",
+              "o(n^2)",
+              "n squared",
+              "nested loop",
+              "two loops"
+            ]
+          },
+          {
+            "label": "edge cases",
+            "any": [
+              "duplicate",
+              "no solution",
+              "empty",
+              "negative",
+              "edge case"
+            ]
+          }
+        ]
+      }
+    ],
+    "Object-oriented design": [
+      {
+        "id": "ood-1",
+        "q": "How would you design the classes for a parking garage? Name the main objects and one design choice.",
+        "points": [
+          {
+            "label": "the main classes",
+            "any": [
+              "class",
+              "object",
+              "spot",
+              "vehicle",
+              "ticket",
+              "level",
+              "garage"
+            ]
+          },
+          {
+            "label": "inheritance or interfaces",
+            "any": [
+              "inherit",
+              "interface",
+              "abstract",
+              "composition",
+              "has a"
+            ]
+          },
+          {
+            "label": "a design principle",
+            "any": [
+              "encapsulat",
+              "single responsibility",
+              "solid",
+              "polymorphism"
+            ]
+          },
+          {
+            "label": "key behavior",
+            "any": [
+              "method",
+              "park",
+              "assign",
+              "fee",
+              "payment"
+            ]
+          }
+        ]
+      }
+    ],
+    "Concurrency": [
+      {
+        "id": "conc-1",
+        "q": "Two threads update the same bank balance at the same time. What can go wrong, and how do you prevent it?",
+        "points": [
+          {
+            "label": "race condition / lost update",
+            "any": [
+              "race condition",
+              "race",
+              "lost update",
+              "overwrite"
+            ]
+          },
+          {
+            "label": "locks",
+            "any": [
+              "lock",
+              "mutex",
+              "synchroniz",
+              "semaphore"
+            ]
+          },
+          {
+            "label": "atomic operations or transactions",
+            "any": [
+              "atomic",
+              "compare and swap",
+              "transaction"
+            ]
+          },
+          {
+            "label": "deadlocks",
+            "any": [
+              "deadlock",
+              "lock ordering"
+            ]
+          }
+        ]
+      }
+    ],
+    "Testing": [
+      {
+        "id": "test-1",
+        "q": "How would you test code that charges a credit card without charging a real card?",
+        "points": [
+          {
+            "label": "mocks or a sandbox",
+            "any": [
+              "mock",
+              "stub",
+              "fake",
+              "sandbox",
+              "test mode"
+            ]
+          },
+          {
+            "label": "unit vs integration tests",
+            "any": [
+              "unit",
+              "integration",
+              "end-to-end",
+              "e2e"
+            ]
+          },
+          {
+            "label": "failure cases",
+            "any": [
+              "edge case",
+              "declined",
+              "failure",
+              "timeout",
+              "invalid"
+            ]
+          },
+          {
+            "label": "automation in CI",
+            "any": [
+              "ci",
+              "automated",
+              "pipeline",
+              "coverage"
+            ]
+          }
+        ]
+      }
+    ],
+    "CI/CD": [
+      {
+        "id": "cicd-1",
+        "q": "Walk me through what should happen between a git push and that code running in production.",
+        "points": [
+          {
+            "label": "build and tests",
+            "any": [
+              "build",
+              "test",
+              "lint"
+            ]
+          },
+          {
+            "label": "code review",
+            "any": [
+              "review",
+              "pull request",
+              "approval"
+            ]
+          },
+          {
+            "label": "a safe rollout",
+            "any": [
+              "canary",
+              "blue-green",
+              "blue green",
+              "rolling",
+              "staged",
+              "feature flag"
+            ]
+          },
+          {
+            "label": "monitoring and rollback",
+            "any": [
+              "rollback",
+              "roll back",
+              "monitor",
+              "alert"
+            ]
+          }
+        ]
+      }
+    ],
+    "Git": [
+      {
+        "id": "git-1",
+        "q": "You and a teammate edited the same file and git shows a merge conflict. What do you do?",
+        "points": [
+          {
+            "label": "pull, merge or rebase",
+            "any": [
+              "pull",
+              "fetch",
+              "rebase",
+              "merge"
+            ]
+          },
+          {
+            "label": "resolve the conflict markers",
+            "any": [
+              "conflict marker",
+              "resolve",
+              "keep both",
+              "both changes",
+              "edit the file"
+            ]
+          },
+          {
+            "label": "talk to the teammate",
+            "any": [
+              "talk",
+              "ask",
+              "teammate",
+              "communicat"
+            ]
+          },
+          {
+            "label": "re-run tests",
+            "any": [
+              "test",
+              "run",
+              "build",
+              "check"
+            ]
+          }
+        ]
+      }
+    ],
+    "Linux": [
+      {
+        "id": "linux-1",
+        "q": "A Linux server suddenly gets slow. What commands do you run first, and what are you looking for?",
+        "points": [
+          {
+            "label": "CPU and memory",
+            "any": [
+              "top",
+              "htop",
+              "ps",
+              "cpu",
+              "memory",
+              "free"
+            ]
+          },
+          {
+            "label": "disk",
+            "any": [
+              "df",
+              "du",
+              "disk",
+              "iostat"
+            ]
+          },
+          {
+            "label": "logs",
+            "any": [
+              "log",
+              "journalctl",
+              "tail",
+              "dmesg"
+            ]
+          },
+          {
+            "label": "network",
+            "any": [
+              "netstat",
+              "ss",
+              "ping",
+              "curl",
+              "network"
+            ]
+          }
+        ]
+      }
+    ],
+    "Docker": [
+      {
+        "id": "docker-1",
+        "q": "What problem does Docker solve, and what's the difference between an image and a container?",
+        "points": [
+          {
+            "label": "same environment everywhere",
+            "any": [
+              "works on my machine",
+              "consistent",
+              "same environment",
+              "dependencies",
+              "portable"
+            ]
+          },
+          {
+            "label": "an image is the template",
+            "any": [
+              "image",
+              "template",
+              "blueprint",
+              "read-only",
+              "layers"
+            ]
+          },
+          {
+            "label": "a container is a running instance",
+            "any": [
+              "running instance",
+              "instance",
+              "process",
+              "running"
+            ]
+          },
+          {
+            "label": "lighter than a VM",
+            "any": [
+              "isolat",
+              "lightweight",
+              "virtual machine",
+              "vm"
+            ]
+          }
+        ]
+      }
+    ],
+    "Kubernetes": [
+      {
+        "id": "k8s-1",
+        "q": "What does Kubernetes do when a pod crashes, and how would you roll out a new version safely?",
+        "points": [
+          {
+            "label": "restarts to the desired state",
+            "any": [
+              "restart",
+              "reschedul",
+              "replica",
+              "desired state",
+              "self-heal"
+            ]
+          },
+          {
+            "label": "rolling or canary rollout",
+            "any": [
+              "rolling",
+              "rollout",
+              "canary",
+              "deployment"
+            ]
+          },
+          {
+            "label": "health probes",
+            "any": [
+              "readiness",
+              "liveness",
+              "health check",
+              "probe"
+            ]
+          },
+          {
+            "label": "rollback",
+            "any": [
+              "rollback",
+              "roll back",
+              "undo"
+            ]
+          }
+        ]
+      }
+    ],
+    "AWS": [
+      {
+        "id": "aws-1",
+        "q": "How would you host a small web app on AWS, and how would you keep the bill low?",
+        "points": [
+          {
+            "label": "compute choice",
+            "any": [
+              "ec2",
+              "lambda",
+              "ecs",
+              "fargate",
+              "elastic beanstalk",
+              "app runner"
+            ]
+          },
+          {
+            "label": "storage or database",
+            "any": [
+              "s3",
+              "rds",
+              "dynamodb",
+              "database"
+            ]
+          },
+          {
+            "label": "cost control",
+            "any": [
+              "free tier",
+              "auto scaling",
+              "autoscaling",
+              "spot",
+              "serverless",
+              "budget",
+              "shut down"
+            ]
+          },
+          {
+            "label": "security basics",
+            "any": [
+              "iam",
+              "security group",
+              "least privilege",
+              "vpc"
+            ]
+          }
+        ]
+      }
+    ],
+    "Cloud": [
+      {
+        "id": "cloud-1",
+        "q": "What changes when you move an app from your laptop to the cloud?",
+        "points": [
+          {
+            "label": "scaling",
+            "any": [
+              "scale",
+              "autoscal",
+              "load balancer"
+            ]
+          },
+          {
+            "label": "managed services",
+            "any": [
+              "managed",
+              "database",
+              "storage",
+              "serverless"
+            ]
+          },
+          {
+            "label": "cost",
+            "any": [
+              "cost",
+              "pay",
+              "bill"
+            ]
+          },
+          {
+            "label": "reliability",
+            "any": [
+              "region",
+              "availability zone",
+              "backup",
+              "redundan"
+            ]
+          }
+        ]
+      }
+    ],
+    "Security": [
+      {
+        "id": "sec-1",
+        "q": "How should a web app store user passwords, and what attacks does that protect against?",
+        "points": [
+          {
+            "label": "hash with a slow algorithm",
+            "any": [
+              "hash",
+              "bcrypt",
+              "argon2",
+              "scrypt",
+              "pbkdf2"
+            ]
+          },
+          {
+            "label": "a unique salt",
+            "any": [
+              "salt"
+            ]
+          },
+          {
+            "label": "the attacks",
+            "any": [
+              "breach",
+              "rainbow table",
+              "brute force",
+              "leak",
+              "credential stuffing"
+            ]
+          },
+          {
+            "label": "never plain text",
+            "any": [
+              "plain text",
+              "plaintext",
+              "never store"
+            ]
+          }
+        ]
+      }
+    ],
+    "Networking": [
+      {
+        "id": "net-1",
+        "q": "What happens, step by step, when you type a web address and hit enter?",
+        "points": [
+          {
+            "label": "DNS lookup",
+            "any": [
+              "dns",
+              "ip address",
+              "resolve"
+            ]
+          },
+          {
+            "label": "TCP and TLS handshake",
+            "any": [
+              "tcp",
+              "handshake",
+              "tls",
+              "ssl",
+              "https"
+            ]
+          },
+          {
+            "label": "the HTTP request and response",
+            "any": [
+              "http request",
+              "get request",
+              "request",
+              "response"
+            ]
+          },
+          {
+            "label": "the browser renders",
+            "any": [
+              "render",
+              "html",
+              "parse"
+            ]
+          }
+        ]
+      }
+    ],
+    "Observability": [
+      {
+        "id": "obs-1",
+        "q": "Users report errors but your dashboards look fine. How do you find the problem?",
+        "points": [
+          {
+            "label": "logs",
+            "any": [
+              "log"
+            ]
+          },
+          {
+            "label": "metrics and traces",
+            "any": [
+              "metric",
+              "trace",
+              "tracing",
+              "dashboard"
+            ]
+          },
+          {
+            "label": "reproduce with a real request",
+            "any": [
+              "reproduce",
+              "repro",
+              "request id",
+              "specific user"
+            ]
+          },
+          {
+            "label": "alerting gaps",
+            "any": [
+              "alert",
+              "threshold",
+              "error rate",
+              "slo"
+            ]
+          }
+        ]
+      }
+    ],
+    "Performance": [
+      {
+        "id": "perf-1",
+        "q": "A page that loaded in 1 second now takes 5. How do you find out why?",
+        "points": [
+          {
+            "label": "measure before guessing",
+            "any": [
+              "profile",
+              "profiler",
+              "measure",
+              "benchmark",
+              "trace"
+            ]
+          },
+          {
+            "label": "find the bottleneck",
+            "any": [
+              "database",
+              "query",
+              "network",
+              "n+1",
+              "bottleneck"
+            ]
+          },
+          {
+            "label": "a fix",
+            "any": [
+              "cache",
+              "index",
+              "batch",
+              "lazy"
+            ]
+          },
+          {
+            "label": "verify the fix",
+            "any": [
+              "compare",
+              "before and after",
+              "regression",
+              "monitor"
+            ]
+          }
+        ]
+      }
+    ],
+    "Machine learning": [
+      {
+        "id": "ml-1",
+        "q": "Your fraud model gets 99% accuracy but it's useless. How is that possible, and what would you measure instead?",
+        "points": [
+          {
+            "label": "class imbalance",
+            "any": [
+              "imbalanc",
+              "rare",
+              "majority class",
+              "skew",
+              "1%",
+              "one percent"
+            ]
+          },
+          {
+            "label": "better metrics",
+            "any": [
+              "precision",
+              "recall",
+              "f1",
+              "auc",
+              "roc"
+            ]
+          },
+          {
+            "label": "a fix",
+            "any": [
+              "resampl",
+              "oversampl",
+              "undersampl",
+              "smote",
+              "class weight",
+              "threshold"
+            ]
+          },
+          {
+            "label": "proper validation",
+            "any": [
+              "validation",
+              "test set",
+              "cross-validation",
+              "leak",
+              "overfit"
+            ]
+          }
+        ]
+      }
+    ],
+    "Deep learning": [
+      {
+        "id": "dl-1",
+        "q": "Your neural network does great on training data and badly on new data. What's happening, and what would you try?",
+        "points": [
+          {
+            "label": "overfitting",
+            "any": [
+              "overfit",
+              "memoriz",
+              "variance"
+            ]
+          },
+          {
+            "label": "regularization",
+            "any": [
+              "dropout",
+              "regulariz",
+              "weight decay",
+              "l2"
+            ]
+          },
+          {
+            "label": "more or augmented data",
+            "any": [
+              "more data",
+              "augment"
+            ]
+          },
+          {
+            "label": "early stopping or a smaller model",
+            "any": [
+              "early stopping",
+              "validation",
+              "simpler model",
+              "smaller model"
+            ]
+          }
+        ]
+      }
+    ],
+    "LLMs": [
+      {
+        "id": "llm-1",
+        "q": "You're building a chatbot over a company's documents. How do you stop it from making things up?",
+        "points": [
+          {
+            "label": "retrieval (RAG)",
+            "any": [
+              "rag",
+              "retriev",
+              "embedding",
+              "vector",
+              "search"
+            ]
+          },
+          {
+            "label": "cite sources",
+            "any": [
+              "cite",
+              "citation",
+              "source",
+              "ground"
+            ]
+          },
+          {
+            "label": "say 'I don't know'",
+            "any": [
+              "don't know",
+              "do not know",
+              "refuse",
+              "fallback",
+              "say so"
+            ]
+          },
+          {
+            "label": "evaluate it",
+            "any": [
+              "evaluat",
+              "test set",
+              "eval",
+              "human review",
+              "measure"
+            ]
+          }
+        ]
+      }
+    ],
+    "NLP": [
+      {
+        "id": "nlp-1",
+        "q": "How would you sort support tickets by topic when you start with zero labeled data?",
+        "points": [
+          {
+            "label": "get labels",
+            "any": [
+              "label",
+              "annotat",
+              "weak supervision",
+              "zero-shot",
+              "few-shot"
+            ]
+          },
+          {
+            "label": "a model or features",
+            "any": [
+              "embedding",
+              "tf-idf",
+              "bert",
+              "transformer",
+              "llm",
+              "cluster"
+            ]
+          },
+          {
+            "label": "evaluate",
+            "any": [
+              "precision",
+              "recall",
+              "accuracy",
+              "evaluat",
+              "confusion"
+            ]
+          },
+          {
+            "label": "improve over time",
+            "any": [
+              "active learning",
+              "iterate",
+              "feedback",
+              "retrain"
+            ]
+          }
+        ]
+      }
+    ],
+    "Computer vision": [
+      {
+        "id": "cv-1",
+        "q": "How would you build a model that spots defects in product photos with only 200 labeled images?",
+        "points": [
+          {
+            "label": "transfer learning",
+            "any": [
+              "pretrained",
+              "pre-trained",
+              "transfer learning",
+              "fine-tun",
+              "resnet",
+              "imagenet"
+            ]
+          },
+          {
+            "label": "augmentation",
+            "any": [
+              "augment",
+              "flip",
+              "rotate",
+              "crop"
+            ]
+          },
+          {
+            "label": "the right metrics",
+            "any": [
+              "precision",
+              "recall",
+              "false positive",
+              "false negative"
+            ]
+          },
+          {
+            "label": "more or better data",
+            "any": [
+              "label more",
+              "more data",
+              "synthetic",
+              "imbalanc"
+            ]
+          }
+        ]
+      }
+    ],
+    "Statistics": [
+      {
+        "id": "stats-1",
+        "q": "Explain a p-value to a non-technical manager, and one way people misuse it.",
+        "points": [
+          {
+            "label": "what it means",
+            "any": [
+              "probability",
+              "chance",
+              "no effect",
+              "null hypothesis",
+              "random"
+            ]
+          },
+          {
+            "label": "the usual threshold",
+            "any": [
+              "0.05",
+              "five percent",
+              "5%",
+              "significan"
+            ]
+          },
+          {
+            "label": "a common misuse",
+            "any": [
+              "p-hacking",
+              "p hacking",
+              "multiple comparisons",
+              "not the probability",
+              "effect size",
+              "practical"
+            ]
+          },
+          {
+            "label": "sample size or intervals",
+            "any": [
+              "sample size",
+              "sample",
+              "confidence interval"
+            ]
+          }
+        ]
+      }
+    ],
+    "A/B testing": [
+      {
+        "id": "ab-1",
+        "q": "Your A/B test shows a new button lifts clicks by 2%. How do you decide whether to ship it?",
+        "points": [
+          {
+            "label": "statistical significance",
+            "any": [
+              "significan",
+              "p-value",
+              "p value",
+              "confidence"
+            ]
+          },
+          {
+            "label": "sample size and duration",
+            "any": [
+              "sample size",
+              "power",
+              "enough users",
+              "duration",
+              "how long"
+            ]
+          },
+          {
+            "label": "guardrail metrics",
+            "any": [
+              "guardrail",
+              "revenue",
+              "retention",
+              "other metrics",
+              "side effect"
+            ]
+          },
+          {
+            "label": "pitfalls",
+            "any": [
+              "peeking",
+              "novelty",
+              "seasonality",
+              "bias",
+              "randomiz"
+            ]
+          }
+        ]
+      }
+    ],
+    "Data analysis": [
+      {
+        "id": "da-1",
+        "q": "Weekly active users dropped 10% last week. How would you figure out why?",
+        "points": [
+          {
+            "label": "check the data is right first",
+            "any": [
+              "data issue",
+              "tracking",
+              "logging",
+              "bug",
+              "pipeline",
+              "check the data"
+            ]
+          },
+          {
+            "label": "segment the drop",
+            "any": [
+              "segment",
+              "platform",
+              "region",
+              "cohort",
+              "device",
+              "break down",
+              "breakdown"
+            ]
+          },
+          {
+            "label": "outside causes",
+            "any": [
+              "holiday",
+              "seasonal",
+              "release",
+              "launch",
+              "outage",
+              "marketing",
+              "spring break"
+            ]
+          },
+          {
+            "label": "recommend next steps",
+            "any": [
+              "recommend",
+              "share",
+              "communicat",
+              "stakeholder",
+              "next step"
+            ]
+          }
+        ]
+      }
+    ],
+    "Data visualization": [
+      {
+        "id": "viz-1",
+        "q": "Design a dashboard for a manager who has 30 seconds a day. What goes on it and what stays off?",
+        "points": [
+          {
+            "label": "the decision and the KPIs",
+            "any": [
+              "kpi",
+              "metric",
+              "goal",
+              "audience",
+              "decision"
+            ]
+          },
+          {
+            "label": "keep it simple",
+            "any": [
+              "simple",
+              "few",
+              "most important",
+              "clutter"
+            ]
+          },
+          {
+            "label": "comparisons over time",
+            "any": [
+              "trend",
+              "over time",
+              "target",
+              "compare",
+              "week over week",
+              "benchmark"
+            ]
+          },
+          {
+            "label": "drill-down for details",
+            "any": [
+              "filter",
+              "drill",
+              "details"
+            ]
+          }
+        ]
+      }
+    ],
+    "Excel": [
+      {
+        "id": "excel-1",
+        "q": "You get a messy spreadsheet of 5,000 transactions. How would you total spend by category and month in Excel?",
+        "points": [
+          {
+            "label": "clean it first",
+            "any": [
+              "clean",
+              "duplicate",
+              "trim",
+              "format",
+              "consistent"
+            ]
+          },
+          {
+            "label": "a pivot table",
+            "any": [
+              "pivot"
+            ]
+          },
+          {
+            "label": "formulas",
+            "any": [
+              "sumif",
+              "sumifs",
+              "xlookup",
+              "vlookup",
+              "index match"
+            ]
+          },
+          {
+            "label": "check the totals",
+            "any": [
+              "check",
+              "total",
+              "reconcile",
+              "validate"
+            ]
+          }
+        ]
+      }
+    ],
+    "Financial modeling": [
+      {
+        "id": "fin-1",
+        "q": "Walk me through how the three financial statements connect.",
+        "points": [
+          {
+            "label": "net income flows down",
+            "any": [
+              "net income"
+            ]
+          },
+          {
+            "label": "cash flow adjustments",
+            "any": [
+              "cash flow",
+              "operating activities",
+              "non-cash",
+              "depreciation"
+            ]
+          },
+          {
+            "label": "the balance sheet balances",
+            "any": [
+              "balance sheet",
+              "retained earnings",
+              "assets",
+              "liabilities",
+              "equity"
+            ]
+          },
+          {
+            "label": "working capital",
+            "any": [
+              "working capital",
+              "receivable",
+              "inventory",
+              "payable"
+            ]
+          }
+        ]
+      }
+    ],
+    "Accounting": [
+      {
+        "id": "acct-1",
+        "q": "What's the difference between accrual and cash accounting, and why does it matter?",
+        "points": [
+          {
+            "label": "when revenue is recorded",
+            "any": [
+              "earned",
+              "when it's earned",
+              "recognize",
+              "recognition"
+            ]
+          },
+          {
+            "label": "cash basis waits for payment",
+            "any": [
+              "when cash",
+              "received",
+              "paid",
+              "money changes hands"
+            ]
+          },
+          {
+            "label": "matching expenses to revenue",
+            "any": [
+              "matching",
+              "same period",
+              "expense"
+            ]
+          },
+          {
+            "label": "why it matters (GAAP, accuracy)",
+            "any": [
+              "gaap",
+              "accurate",
+              "true picture",
+              "investors",
+              "required"
+            ]
+          }
+        ]
+      }
+    ],
+    "Product sense": [
+      {
+        "id": "pm-1",
+        "q": "Pick an app you use every day. What's one thing you'd improve, and how would you know it worked?",
+        "points": [
+          {
+            "label": "the user and their problem",
+            "any": [
+              "user",
+              "problem",
+              "pain",
+              "need"
+            ]
+          },
+          {
+            "label": "a concrete change",
+            "any": [
+              "feature",
+              "change",
+              "solution",
+              "idea"
+            ]
+          },
+          {
+            "label": "how you'd prioritize",
+            "any": [
+              "priorit",
+              "trade-off",
+              "tradeoff",
+              "impact",
+              "effort"
+            ]
+          },
+          {
+            "label": "a success metric",
+            "any": [
+              "metric",
+              "measure",
+              "retention",
+              "engagement",
+              "a/b",
+              "conversion"
+            ]
+          }
+        ]
+      }
+    ],
+    "Marketing": [
+      {
+        "id": "mkt-1",
+        "q": "How would you get the first 1,000 students at a university to try a new app?",
+        "points": [
+          {
+            "label": "a target audience",
+            "any": [
+              "target",
+              "audience",
+              "freshmen",
+              "students",
+              "segment"
+            ]
+          },
+          {
+            "label": "channels",
+            "any": [
+              "instagram",
+              "tiktok",
+              "club",
+              "ambassador",
+              "referral",
+              "campus",
+              "event",
+              "social"
+            ]
+          },
+          {
+            "label": "the message",
+            "any": [
+              "message",
+              "value",
+              "hook",
+              "why"
+            ]
+          },
+          {
+            "label": "how you'd measure it",
+            "any": [
+              "measure",
+              "track",
+              "conversion",
+              "cost per",
+              "metric"
+            ]
+          }
+        ]
+      }
+    ],
+    "Project management": [
+      {
+        "id": "proj-1",
+        "q": "Your project is two weeks behind and the deadline can't move. What do you do?",
+        "points": [
+          {
+            "label": "cut or reprioritize scope",
+            "any": [
+              "scope",
+              "cut",
+              "priorit",
+              "mvp",
+              "must-have"
+            ]
+          },
+          {
+            "label": "tell stakeholders early",
+            "any": [
+              "communicat",
+              "stakeholder",
+              "manager",
+              "update",
+              "tell"
+            ]
+          },
+          {
+            "label": "get help or parallelize",
+            "any": [
+              "help",
+              "resources",
+              "reassign",
+              "parallel"
+            ]
+          },
+          {
+            "label": "a new plan",
+            "any": [
+              "risk",
+              "plan",
+              "timeline",
+              "milestone"
+            ]
+          }
+        ]
+      }
+    ],
+    "Embedded systems": [
+      {
+        "id": "emb-1",
+        "q": "How would you debug a microcontroller that randomly resets in the field?",
+        "points": [
+          {
+            "label": "watchdog timer",
+            "any": [
+              "watchdog"
+            ]
+          },
+          {
+            "label": "power problems",
+            "any": [
+              "power",
+              "brownout",
+              "voltage",
+              "supply"
+            ]
+          },
+          {
+            "label": "memory problems",
+            "any": [
+              "stack overflow",
+              "memory",
+              "heap",
+              "pointer"
+            ]
+          },
+          {
+            "label": "logging and tools",
+            "any": [
+              "log",
+              "debugger",
+              "jtag",
+              "oscilloscope",
+              "serial"
+            ]
+          }
+        ]
+      }
+    ],
+    "Hardware/circuits": [
+      {
+        "id": "hw-1",
+        "q": "How would you make sure a new chip feature works before it ships?",
+        "points": [
+          {
+            "label": "a test plan and coverage",
+            "any": [
+              "test plan",
+              "coverage",
+              "test cases"
+            ]
+          },
+          {
+            "label": "simulation, emulation or lab",
+            "any": [
+              "simulation",
+              "emulation",
+              "fpga",
+              "pre-silicon",
+              "post-silicon",
+              "lab"
+            ]
+          },
+          {
+            "label": "corner cases",
+            "any": [
+              "corner",
+              "voltage",
+              "temperature",
+              "edge case",
+              "stress"
+            ]
+          },
+          {
+            "label": "root-causing failures",
+            "any": [
+              "debug",
+              "root cause",
+              "waveform",
+              "scope"
+            ]
+          }
+        ]
+      }
+    ],
+    "CAD": [
+      {
+        "id": "cad-1",
+        "q": "Walk me through a part you designed in CAD and one change you made after testing it.",
+        "points": [
+          {
+            "label": "design intent and tolerances",
+            "any": [
+              "constraint",
+              "dimension",
+              "tolerance",
+              "design intent"
+            ]
+          },
+          {
+            "label": "how you tested it",
+            "any": [
+              "test",
+              "prototype",
+              "print",
+              "fea",
+              "simulation"
+            ]
+          },
+          {
+            "label": "the change you made",
+            "any": [
+              "change",
+              "revis",
+              "iterat",
+              "redesign"
+            ]
+          },
+          {
+            "label": "manufacturing thinking",
+            "any": [
+              "manufactur",
+              "machin",
+              "3d print",
+              "material",
+              "cost"
+            ]
+          }
+        ]
+      }
+    ],
+    "Supply chain": [
+      {
+        "id": "sc-1",
+        "q": "A key supplier will be two weeks late. How do you keep production running?",
+        "points": [
+          {
+            "label": "backup sources",
+            "any": [
+              "alternate supplier",
+              "second source",
+              "backup",
+              "expedite"
+            ]
+          },
+          {
+            "label": "inventory buffers",
+            "any": [
+              "safety stock",
+              "inventory",
+              "buffer"
+            ]
+          },
+          {
+            "label": "prioritize what ships",
+            "any": [
+              "priorit",
+              "allocate",
+              "critical"
+            ]
+          },
+          {
+            "label": "communicate",
+            "any": [
+              "communicat",
+              "customer",
+              "stakeholder",
+              "update"
+            ]
+          }
+        ]
+      }
+    ],
+    "Communication": [
+      {
+        "id": "comm-1",
+        "star": true,
+        "q": "Tell me about a time you explained something technical to someone who wasn't technical.",
+        "points": [
+          {
+            "label": "checked they understood",
+            "any": [
+              "analogy",
+              "example",
+              "simple",
+              "checked",
+              "asked if",
+              "visual",
+              "diagram"
+            ]
+          }
+        ]
+      }
+    ],
+    "Collaboration": [
+      {
+        "id": "collab-1",
+        "star": true,
+        "q": "Tell me about a time you disagreed with a teammate. What happened?",
+        "points": [
+          {
+            "label": "listened to their side",
+            "any": [
+              "listen",
+              "their perspective",
+              "understand",
+              "compromise",
+              "data",
+              "both"
+            ]
+          }
+        ]
+      }
+    ],
+    "Ownership": [
+      {
+        "id": "own-1",
+        "star": true,
+        "q": "Tell me about something you built or fixed that nobody asked you to.",
+        "points": []
+      }
+    ],
+    "Ambiguity": [
+      {
+        "id": "amb-1",
+        "star": true,
+        "q": "Tell me about a time the instructions were unclear. How did you move forward?",
+        "points": [
+          {
+            "label": "asked clarifying questions",
+            "any": [
+              "ask",
+              "clarif",
+              "questions"
+            ]
+          },
+          {
+            "label": "made an assumption and tested it",
+            "any": [
+              "assum",
+              "prototype",
+              "small",
+              "first version",
+              "mvp",
+              "draft"
+            ]
+          }
+        ]
+      }
+    ],
+    "Learning quickly": [
+      {
+        "id": "learn-1",
+        "star": true,
+        "q": "Tell me about a time you had to learn a new tool or topic fast.",
+        "points": [
+          {
+            "label": "how you learned it",
+            "any": [
+              "documentation",
+              "docs",
+              "tutorial",
+              "course",
+              "asked",
+              "mentor",
+              "small project",
+              "youtube"
+            ]
+          }
+        ]
+      }
+    ],
+    "Problem solving": [
+      {
+        "id": "debug-1",
+        "q": "Tell me about the hardest bug you've fixed. How did you track it down?",
+        "points": [
+          {
+            "label": "reproduced it",
+            "any": [
+              "reproduce",
+              "repro"
+            ]
+          },
+          {
+            "label": "narrowed it down",
+            "any": [
+              "isolat",
+              "narrow",
+              "binary search",
+              "bisect",
+              "print",
+              "log",
+              "debugger"
+            ]
+          },
+          {
+            "label": "found the root cause",
+            "any": [
+              "root cause",
+              "turned out",
+              "the cause",
+              "the issue was",
+              "the problem was"
+            ]
+          },
+          {
+            "label": "kept it from coming back",
+            "any": [
+              "test",
+              "prevent",
+              "never again",
+              "added a check"
+            ]
+          }
+        ]
+      }
+    ],
+    "Customer focus": [
+      {
+        "id": "cust-1",
+        "star": true,
+        "q": "Tell me about a time you changed your plan because of feedback from a user or customer.",
+        "points": [
+          {
+            "label": "how you heard from users",
+            "any": [
+              "feedback",
+              "survey",
+              "interview",
+              "talked to",
+              "user testing",
+              "review"
+            ]
+          }
+        ]
+      }
+    ],
+    "Leadership": [
+      {
+        "id": "lead-1",
+        "star": true,
+        "q": "Tell me about a time you led a group without being the official leader.",
+        "points": [
+          {
+            "label": "how you got others on board",
+            "any": [
+              "convinced",
+              "motivat",
+              "delegat",
+              "aligned",
+              "listened",
+              "organized"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

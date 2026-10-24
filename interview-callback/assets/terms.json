@@ -1,0 +1,910 @@
+{
+  "_about": "Skills and topics the extractor looks for in a posting. aliases are matched case-insensitively on word boundaries; regex entries are matched as written (case-sensitive) for short or ambiguous names.",
+  "terms": [
+    {
+      "term": "Python",
+      "cat": "language",
+      "aliases": [
+        "python"
+      ]
+    },
+    {
+      "term": "Java",
+      "cat": "language",
+      "aliases": [
+        "java"
+      ]
+    },
+    {
+      "term": "C++",
+      "cat": "language",
+      "aliases": [
+        "c++",
+        "cpp",
+        "c/c++"
+      ]
+    },
+    {
+      "term": "C",
+      "cat": "language",
+      "regex": "(?<![\\w+#/.-])C(?=/C\\+\\+|,\\s*C\\+\\+| and C\\+\\+| or C\\+\\+| programming| language)"
+    },
+    {
+      "term": "C#",
+      "cat": "language",
+      "aliases": [
+        "c#",
+        ".net",
+        "dotnet",
+        "asp.net"
+      ]
+    },
+    {
+      "term": "Go",
+      "cat": "language",
+      "regex": "\\b[Gg]olang\\b|(?:(?<=[,/(] )|(?<=[/(])|(?<= or )|(?<= and ))Go\\b(?![-'’])|\\bGo(?=,| or | and |/|\\))"
+    },
+    {
+      "term": "Rust",
+      "cat": "language",
+      "aliases": [
+        "rust"
+      ]
+    },
+    {
+      "term": "JavaScript",
+      "cat": "language",
+      "aliases": [
+        "javascript",
+        "js",
+        "ecmascript"
+      ]
+    },
+    {
+      "term": "TypeScript",
+      "cat": "language",
+      "aliases": [
+        "typescript"
+      ]
+    },
+    {
+      "term": "Kotlin",
+      "cat": "language",
+      "aliases": [
+        "kotlin"
+      ]
+    },
+    {
+      "term": "Swift",
+      "cat": "language",
+      "aliases": [
+        "swift",
+        "swiftui"
+      ]
+    },
+    {
+      "term": "Ruby",
+      "cat": "language",
+      "aliases": [
+        "ruby",
+        "rails",
+        "ruby on rails"
+      ]
+    },
+    {
+      "term": "Scala",
+      "cat": "language",
+      "aliases": [
+        "scala"
+      ]
+    },
+    {
+      "term": "R",
+      "cat": "language",
+      "regex": "(?<![\\w&.-])R(?![\\w&'’-])(?=[,/ ).;]|$)(?!\\s*&\\s*D)"
+    },
+    {
+      "term": "MATLAB",
+      "cat": "language",
+      "aliases": [
+        "matlab",
+        "simulink"
+      ]
+    },
+    {
+      "term": "Verilog/VHDL",
+      "cat": "hardware",
+      "aliases": [
+        "verilog",
+        "systemverilog",
+        "vhdl",
+        "rtl"
+      ]
+    },
+    {
+      "term": "SQL",
+      "cat": "data",
+      "aliases": [
+        "sql",
+        "postgres",
+        "postgresql",
+        "mysql",
+        "sql server",
+        "t-sql",
+        "pl/sql",
+        "relational database",
+        "relational databases"
+      ]
+    },
+    {
+      "term": "NoSQL",
+      "cat": "data",
+      "aliases": [
+        "nosql",
+        "mongodb",
+        "dynamodb",
+        "cassandra",
+        "document database"
+      ]
+    },
+    {
+      "term": "Redis",
+      "cat": "data",
+      "aliases": [
+        "redis",
+        "memcached",
+        "caching",
+        "cache"
+      ]
+    },
+    {
+      "term": "Kafka",
+      "cat": "data",
+      "aliases": [
+        "kafka",
+        "event streaming",
+        "event-driven",
+        "event driven",
+        "message queue",
+        "message queues",
+        "pub/sub",
+        "rabbitmq",
+        "kinesis"
+      ]
+    },
+    {
+      "term": "Spark",
+      "cat": "data",
+      "aliases": [
+        "spark",
+        "pyspark",
+        "hadoop",
+        "databricks"
+      ]
+    },
+    {
+      "term": "Data pipelines",
+      "cat": "data",
+      "aliases": [
+        "etl",
+        "elt",
+        "data pipeline",
+        "data pipelines",
+        "airflow",
+        "dbt",
+        "data warehouse",
+        "data warehousing"
+      ]
+    },
+    {
+      "term": "Snowflake/BigQuery",
+      "cat": "data",
+      "aliases": [
+        "snowflake",
+        "bigquery",
+        "redshift"
+      ]
+    },
+    {
+      "term": "React",
+      "cat": "framework",
+      "aliases": [
+        "react",
+        "react.js",
+        "reactjs",
+        "react native",
+        "next.js",
+        "nextjs"
+      ]
+    },
+    {
+      "term": "Angular/Vue",
+      "cat": "framework",
+      "aliases": [
+        "angular",
+        "vue",
+        "vue.js",
+        "svelte"
+      ]
+    },
+    {
+      "term": "Node.js",
+      "cat": "framework",
+      "aliases": [
+        "node.js",
+        "nodejs",
+        "express.js"
+      ]
+    },
+    {
+      "term": "Django/Flask",
+      "cat": "framework",
+      "aliases": [
+        "django",
+        "flask",
+        "fastapi"
+      ]
+    },
+    {
+      "term": "Spring",
+      "cat": "framework",
+      "aliases": [
+        "spring boot",
+        "spring framework",
+        "spring mvc"
+      ]
+    },
+    {
+      "term": "iOS/Android",
+      "cat": "framework",
+      "aliases": [
+        "ios",
+        "android",
+        "mobile development",
+        "mobile app",
+        "mobile apps"
+      ]
+    },
+    {
+      "term": "Frontend",
+      "cat": "concept",
+      "aliases": [
+        "frontend",
+        "front-end",
+        "front end",
+        "html",
+        "css",
+        "user interface",
+        "ui development",
+        "web development"
+      ]
+    },
+    {
+      "term": "Backend",
+      "cat": "concept",
+      "aliases": [
+        "backend",
+        "back-end",
+        "back end",
+        "server-side",
+        "server side"
+      ]
+    },
+    {
+      "term": "APIs",
+      "cat": "concept",
+      "aliases": [
+        "api",
+        "apis",
+        "restful",
+        "graphql",
+        "grpc",
+        "web services",
+        "rest api",
+        "rest apis"
+      ]
+    },
+    {
+      "term": "Distributed systems",
+      "cat": "concept",
+      "aliases": [
+        "distributed systems",
+        "distributed system",
+        "distributed computing",
+        "large-scale systems",
+        "large scale systems",
+        "at scale",
+        "scalable systems",
+        "scalability",
+        "high availability",
+        "fault tolerance",
+        "fault-tolerant",
+        "reliability"
+      ]
+    },
+    {
+      "term": "System design",
+      "cat": "concept",
+      "aliases": [
+        "system design",
+        "systems design",
+        "architecture",
+        "software architecture",
+        "design systems"
+      ]
+    },
+    {
+      "term": "Microservices",
+      "cat": "concept",
+      "aliases": [
+        "microservices",
+        "microservice",
+        "service-oriented"
+      ]
+    },
+    {
+      "term": "Data structures and algorithms",
+      "cat": "concept",
+      "aliases": [
+        "data structures",
+        "algorithms",
+        "algorithm",
+        "computer science fundamentals",
+        "cs fundamentals",
+        "complexity analysis"
+      ]
+    },
+    {
+      "term": "Object-oriented design",
+      "cat": "concept",
+      "aliases": [
+        "object-oriented",
+        "object oriented",
+        "oop",
+        "design patterns"
+      ]
+    },
+    {
+      "term": "Concurrency",
+      "cat": "concept",
+      "aliases": [
+        "concurrency",
+        "multithreading",
+        "multi-threaded",
+        "multithreaded",
+        "parallel programming",
+        "asynchronous",
+        "async"
+      ]
+    },
+    {
+      "term": "Testing",
+      "cat": "concept",
+      "aliases": [
+        "testing",
+        "unit tests",
+        "unit testing",
+        "test automation",
+        "automated tests",
+        "qa",
+        "quality assurance",
+        "tdd",
+        "test-driven",
+        "tests",
+        "test coverage",
+        "integration tests"
+      ]
+    },
+    {
+      "term": "CI/CD",
+      "cat": "infra",
+      "aliases": [
+        "ci/cd",
+        "continuous integration",
+        "continuous delivery",
+        "continuous deployment",
+        "github actions",
+        "jenkins",
+        "devops"
+      ]
+    },
+    {
+      "term": "Git",
+      "cat": "tool",
+      "aliases": [
+        "git",
+        "github",
+        "gitlab",
+        "version control"
+      ]
+    },
+    {
+      "term": "Linux",
+      "cat": "infra",
+      "aliases": [
+        "linux",
+        "unix",
+        "bash",
+        "shell scripting"
+      ]
+    },
+    {
+      "term": "Docker",
+      "cat": "infra",
+      "aliases": [
+        "docker",
+        "containers",
+        "containerization",
+        "container"
+      ]
+    },
+    {
+      "term": "Kubernetes",
+      "cat": "infra",
+      "aliases": [
+        "kubernetes",
+        "k8s",
+        "eks",
+        "gke",
+        "helm"
+      ]
+    },
+    {
+      "term": "Terraform",
+      "cat": "infra",
+      "aliases": [
+        "terraform",
+        "infrastructure as code",
+        "cloudformation",
+        "ansible"
+      ]
+    },
+    {
+      "term": "AWS",
+      "cat": "cloud",
+      "aliases": [
+        "aws",
+        "amazon web services",
+        "ec2",
+        "s3",
+        "lambda"
+      ]
+    },
+    {
+      "term": "GCP",
+      "cat": "cloud",
+      "aliases": [
+        "gcp",
+        "google cloud"
+      ]
+    },
+    {
+      "term": "Azure",
+      "cat": "cloud",
+      "aliases": [
+        "azure"
+      ]
+    },
+    {
+      "term": "Cloud",
+      "cat": "cloud",
+      "aliases": [
+        "cloud",
+        "cloud computing",
+        "cloud infrastructure",
+        "cloud-native",
+        "cloud native"
+      ]
+    },
+    {
+      "term": "Networking",
+      "cat": "infra",
+      "aliases": [
+        "networking",
+        "tcp/ip",
+        "tcp",
+        "dns",
+        "network protocols"
+      ]
+    },
+    {
+      "term": "Security",
+      "cat": "concept",
+      "aliases": [
+        "security",
+        "cybersecurity",
+        "authentication",
+        "authorization",
+        "encryption",
+        "vulnerability",
+        "threat",
+        "secure coding",
+        "iam"
+      ]
+    },
+    {
+      "term": "Observability",
+      "cat": "infra",
+      "aliases": [
+        "observability",
+        "monitoring",
+        "logging",
+        "alerting",
+        "on-call",
+        "incident response",
+        "sre"
+      ]
+    },
+    {
+      "term": "Performance",
+      "cat": "concept",
+      "aliases": [
+        "performance",
+        "latency",
+        "optimization",
+        "optimize",
+        "profiling",
+        "low-latency"
+      ]
+    },
+    {
+      "term": "Machine learning",
+      "cat": "ml",
+      "aliases": [
+        "machine learning",
+        "ml",
+        "scikit-learn",
+        "sklearn",
+        "xgboost",
+        "model training",
+        "predictive models",
+        "predictive modeling"
+      ]
+    },
+    {
+      "term": "Deep learning",
+      "cat": "ml",
+      "aliases": [
+        "deep learning",
+        "pytorch",
+        "tensorflow",
+        "neural network",
+        "neural networks",
+        "jax"
+      ]
+    },
+    {
+      "term": "LLMs",
+      "cat": "ml",
+      "aliases": [
+        "llm",
+        "llms",
+        "large language model",
+        "large language models",
+        "generative ai",
+        "genai",
+        "gen ai",
+        "prompt engineering",
+        "rag",
+        "retrieval-augmented",
+        "ai agents"
+      ]
+    },
+    {
+      "term": "NLP",
+      "cat": "ml",
+      "aliases": [
+        "nlp",
+        "natural language processing"
+      ]
+    },
+    {
+      "term": "Computer vision",
+      "cat": "ml",
+      "aliases": [
+        "computer vision",
+        "image processing",
+        "opencv"
+      ]
+    },
+    {
+      "term": "Statistics",
+      "cat": "ml",
+      "aliases": [
+        "statistics",
+        "statistical",
+        "probability",
+        "regression",
+        "hypothesis testing",
+        "econometrics"
+      ]
+    },
+    {
+      "term": "A/B testing",
+      "cat": "ml",
+      "aliases": [
+        "a/b testing",
+        "a/b tests",
+        "ab testing",
+        "experimentation",
+        "experiments",
+        "causal inference"
+      ]
+    },
+    {
+      "term": "Data analysis",
+      "cat": "data",
+      "aliases": [
+        "data analysis",
+        "analytics",
+        "analyze data",
+        "analyzing data",
+        "data-driven",
+        "insights",
+        "pandas",
+        "numpy",
+        "jupyter"
+      ]
+    },
+    {
+      "term": "Data visualization",
+      "cat": "tool",
+      "aliases": [
+        "tableau",
+        "power bi",
+        "looker",
+        "dashboards",
+        "dashboard",
+        "data visualization",
+        "visualizations"
+      ]
+    },
+    {
+      "term": "Excel",
+      "cat": "tool",
+      "aliases": [
+        "excel",
+        "spreadsheets",
+        "spreadsheet",
+        "google sheets",
+        "vba",
+        "pivot tables"
+      ]
+    },
+    {
+      "term": "Financial modeling",
+      "cat": "business",
+      "aliases": [
+        "financial modeling",
+        "financial models",
+        "financial model",
+        "valuation",
+        "dcf",
+        "forecasting",
+        "budgeting",
+        "financial analysis",
+        "fp&a"
+      ]
+    },
+    {
+      "term": "Accounting",
+      "cat": "business",
+      "aliases": [
+        "accounting",
+        "gaap",
+        "reconciliation",
+        "reconciliations",
+        "audit",
+        "general ledger"
+      ]
+    },
+    {
+      "term": "Product sense",
+      "cat": "business",
+      "aliases": [
+        "product sense",
+        "product management",
+        "product requirements",
+        "roadmap",
+        "user research",
+        "customer needs",
+        "user needs",
+        "prd",
+        "prds"
+      ]
+    },
+    {
+      "term": "Marketing",
+      "cat": "business",
+      "aliases": [
+        "marketing",
+        "seo",
+        "social media",
+        "content creation",
+        "campaigns",
+        "brand",
+        "go-to-market"
+      ]
+    },
+    {
+      "term": "Sales/CRM",
+      "cat": "business",
+      "aliases": [
+        "sales",
+        "salesforce",
+        "crm",
+        "hubspot",
+        "account management"
+      ]
+    },
+    {
+      "term": "Project management",
+      "cat": "business",
+      "aliases": [
+        "project management",
+        "agile",
+        "scrum",
+        "jira",
+        "program management"
+      ]
+    },
+    {
+      "term": "Supply chain",
+      "cat": "business",
+      "aliases": [
+        "supply chain",
+        "logistics",
+        "operations research",
+        "procurement",
+        "inventory"
+      ]
+    },
+    {
+      "term": "Embedded systems",
+      "cat": "hardware",
+      "aliases": [
+        "embedded",
+        "firmware",
+        "microcontroller",
+        "microcontrollers",
+        "rtos",
+        "arduino",
+        "raspberry pi"
+      ]
+    },
+    {
+      "term": "Hardware/circuits",
+      "cat": "hardware",
+      "aliases": [
+        "circuit design",
+        "pcb",
+        "analog",
+        "digital design",
+        "semiconductor",
+        "silicon",
+        "fpga",
+        "asic",
+        "post-silicon",
+        "pre-silicon"
+      ]
+    },
+    {
+      "term": "CAD",
+      "cat": "hardware",
+      "aliases": [
+        "cad",
+        "solidworks",
+        "autocad",
+        "catia",
+        "creo",
+        "fusion 360"
+      ]
+    },
+    {
+      "term": "Communication",
+      "cat": "soft",
+      "aliases": [
+        "communication",
+        "communicate",
+        "communicating",
+        "written and verbal",
+        "presentation skills",
+        "present findings",
+        "storytelling"
+      ]
+    },
+    {
+      "term": "Collaboration",
+      "cat": "soft",
+      "aliases": [
+        "collaboration",
+        "collaborate",
+        "collaborative",
+        "cross-functional",
+        "cross functional",
+        "teamwork",
+        "team player",
+        "work closely with"
+      ]
+    },
+    {
+      "term": "Ownership",
+      "cat": "soft",
+      "aliases": [
+        "ownership",
+        "take ownership",
+        "own projects",
+        "self-starter",
+        "self starter",
+        "self-motivated",
+        "proactive",
+        "initiative",
+        "bias for action"
+      ]
+    },
+    {
+      "term": "Ambiguity",
+      "cat": "soft",
+      "aliases": [
+        "ambiguity",
+        "ambiguous",
+        "fast-paced",
+        "fast paced",
+        "dynamic environment",
+        "changing priorities",
+        "comfortable with uncertainty"
+      ]
+    },
+    {
+      "term": "Learning quickly",
+      "cat": "soft",
+      "aliases": [
+        "learn quickly",
+        "fast learner",
+        "quick learner",
+        "curiosity",
+        "curious",
+        "eager to learn",
+        "growth mindset",
+        "learning agility"
+      ]
+    },
+    {
+      "term": "Problem solving",
+      "cat": "soft",
+      "aliases": [
+        "problem solving",
+        "problem-solving",
+        "analytical skills",
+        "critical thinking",
+        "solve complex problems",
+        "troubleshooting",
+        "debugging"
+      ]
+    },
+    {
+      "term": "Customer focus",
+      "cat": "soft",
+      "aliases": [
+        "customer focus",
+        "customer-focused",
+        "customer obsession",
+        "user empathy",
+        "customers first",
+        "user-centric",
+        "customer experience"
+      ]
+    },
+    {
+      "term": "Leadership",
+      "cat": "soft",
+      "aliases": [
+        "leadership",
+        "lead projects",
+        "mentorship",
+        "mentoring",
+        "influence"
+      ]
+    }
+  ]
+}

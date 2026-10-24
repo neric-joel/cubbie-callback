@@ -1,0 +1,15 @@
+From: Maya Chen <maya.chen@saguaropay.com>
+Subject: Interview invitation: Software Engineer Intern, Payments
+
+Hi Sam,
+
+Thanks for applying to the Software Engineer Intern, Payments role at Saguaro Pay. We'd love to move you to the next round.
+
+Your 45-minute technical interview with our Payments Core team is confirmed for Thursday, October 29 at 2:00 PM Arizona time. You'll get a calendar invite with the Zoom link: https://zoom.us/j/0000000000
+
+Job posting, for reference: https://boards.greenhouse.io/saguaropay/jobs/4012345
+
+Best,
+Maya
+Saguaro Pay Recruiting
+(This email is a made-up sample.)
