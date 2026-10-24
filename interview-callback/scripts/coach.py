@@ -86,8 +86,20 @@ def classify_heading(line):
     return "keep" if line.endswith(":") else None
 
 
+_SECTIONS = {}
+
+
 def sections(lines):
-    """Section of each line: intro, about, role, must or nice. Heading lines are tagged 'heading'."""
+    """Section of each line: intro, about, role, must or nice. Heading lines are tagged 'heading'. Cached."""
+    key = (id(lines), len(lines))
+    if key in _SECTIONS and _SECTIONS[key][0] is lines:
+        return _SECTIONS[key][1]
+    out = _sections(lines)
+    _SECTIONS[key] = (lines, out)
+    return out
+
+
+def _sections(lines):
     out, current = [], "intro"
     for line in lines:
         kind = classify_heading(line)
@@ -468,8 +480,8 @@ def next_question(rec, tone="chill", question_id=None, term=None):
 # ---------------------------------------------------------------- scoring
 
 FILLERS = ["um", "uh", "you know", "kind of", "sort of", "basically", "literally", "i mean"]
-COURSE_CODE = re.compile(r"\b[a-z]{2,4} ?\d{3}[a-z]?\b")
-NUMBER = re.compile(r"\d|\b(percent|half|twice|double|triple|hundred|thousand|million|dozen)\b")
+COURSE_CODE = re.compile(r"\b[A-Z]{2,4} ?\d{3}[A-Z]?\b")
+NUMBER = re.compile(r"(?<![a-z0-9])\d|\b(percent|half|twice|double|triple|hundred|thousand|million|dozen)\b")
 
 
 def _phrase_re(p):
@@ -497,11 +509,11 @@ def _said(phrase, text):
 
 
 def score_answer(question, answer):
+    no_codes = " ".join(COURSE_CODE.sub(" ", answer or "").lower().split())  # "CSE 340" is a class, not a result
     text = " ".join((answer or "").lower().replace("’", "'").split())
     results = []
     for p in question["points"]:
         hit = next((ph for ph in p["phrases"] if _said(ph, text)), None)
-        no_codes = COURSE_CODE.sub(" ", text)  # "CSE 340" is a class, not a result
         if not hit and p.get("number") and NUMBER.search(no_codes):
             hit = NUMBER.search(no_codes).group(0)
         results.append({"point": p["label"], "covered": bool(hit), "evidence": hit, "cite": p.get("cite")})
@@ -543,7 +555,8 @@ def score_answer(question, answer):
 REJECT = re.compile(r"(we (?:will|are|have) (?:not|decided not)[^.]{0,30}(?:moving forward|proceed|pursue)|"
                     r"decided not to (?:move|proceed)|(?:won'?t|will not|are not) (?:be )?(?:moving forward|proceeding|"
                     r"extending)|not (?:be )?moving forward with your|(?:decided|chosen) to (?:pursue|move forward with) "
-                    r"other|unable to offer|extending an offer|position has been filled|we regret to inform|"
+                    r"other|moving forward with other (?:candidates|applicants)|unable to offer|extending an offer|"
+                    r"position has been filled|we regret to inform|"
                     r"not been selected|were not selected)", re.I)
 RESCHEDULE = re.compile(r"(reschedul|original time|move your interview|new time|different time)", re.I)
 ASSESS = re.compile(r"(online assessment|coding assessment|hackerrank|codesignal|codility|hirevue|take[- ]home|"

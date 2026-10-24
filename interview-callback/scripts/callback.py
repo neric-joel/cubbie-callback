@@ -18,6 +18,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import traceback
 from contextlib import contextmanager
@@ -29,7 +30,7 @@ import boards  # noqa: E402
 import coach  # noqa: E402
 
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
-EXIT = {"error": 1, "bad_input": 2, "not_found": 3, "no_intern": 3, "ambiguous": 4, "unreachable": 5, "closed": 6,
+EXIT = {"error": 1, "busy": 1, "bad_input": 2, "board_only": 2, "not_found": 3, "no_intern": 3, "ambiguous": 4, "unreachable": 5, "closed": 6,
         "no_interview": 7, "done": 8}
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}$")
 LIMIT = 7800  # Cubbie reads the first 8,000 characters of output
@@ -54,7 +55,7 @@ def _shrink(x, chars, items):
 def emit(data, code=0):
     """Print JSON that always parses and fits: long strings and lists are shortened, `next` survives."""
     if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
     text = json.dumps(data, ensure_ascii=False, indent=1)
     for chars, items in ((400, 12), (200, 6), (100, 3), (60, 2)):
         if len(text) <= LIMIT:
@@ -74,7 +75,8 @@ def now():
 
 def read_file(path, what):
     try:
-        return Path(path).read_text(encoding="utf-8", errors="replace")
+        with open(path, "rb") as fh:
+            return fh.read(2_000_000).decode("utf-8", errors="replace")
     except OSError:
         raise Stop("bad_input", f"can't read the {what} file '{path}'", f"Save the {what} to a file and pass its path.")
 
@@ -97,7 +99,7 @@ def all_records(sd):
             continue
         if isinstance(rec, dict) and isinstance(rec.get("posting"), dict) and rec.get("id"):
             recs.append(rec)
-    return sorted(recs, key=lambda r: r.get("updated_at", ""), reverse=True)
+    return sorted(recs, key=lambda r: (r.get("updated_ts", 0), r.get("updated_at", "")), reverse=True)
 
 
 def record_path(sd, rid):
@@ -120,6 +122,7 @@ def load(sd, rid):
 
 def save(sd, rec):
     rec["updated_at"] = now()
+    rec["updated_ts"] = time.time()
     f = record_path(sd, rec["id"])
     tmp = f.with_name(f".{f.stem}.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -131,17 +134,19 @@ def locked(sd):
     """One command at a time per state folder, so two runs can't overwrite each other's changes."""
     fh = open(sd / ".lock", "a+")
     try:
-        if os.name == "nt":
-            import msvcrt
-            for _ in range(100):
-                try:
+        for _ in range(100):  # about 10 seconds
+            try:
+                if os.name == "nt":
+                    import msvcrt
                     msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
-                    break
-                except OSError:
-                    time.sleep(0.1)
+                else:
+                    import fcntl
+                    fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                time.sleep(0.1)
         else:
-            import fcntl
-            fcntl.flock(fh, fcntl.LOCK_EX)
+            raise Stop("busy", "another interview-callback command is still running", "Try again in a few seconds.")
         yield
     finally:
         fh.close()
@@ -363,8 +368,14 @@ def cmd_question(a, sd):
 
 
 def cmd_score(a, sd):
-    waiting = None if a.id else next((r for r in all_records(sd) if r.get("pending_question")), None)
-    rec = waiting or load(sd, a.id)
+    waiting = [] if a.id else [r for r in all_records(sd) if r.get("pending_question")]
+    if len(waiting) > 1 and not a.credit:
+        raise Stop("ambiguous", "several interviews are waiting for an answer",
+                   "Ask the student which one this answer is for, then pass --id.",
+                   candidates=[{"id": r["id"], "company": r["posting"]["company"], "title": r["posting"]["title"],
+                                "question": (r.get("questions") or {}).get(r["pending_question"], {}).get("question")}
+                               for r in waiting[:4]])
+    rec = waiting[0] if waiting else load(sd, a.id)
     qid = a.question_id or rec.get("pending_question") or rec.get("last_question")
     q = (rec.get("questions") or {}).get(qid or "")
     if not q:
@@ -466,7 +477,8 @@ def cmd_list(a, sd):
                       "when": r.get("when"), "questions_asked": len(r.get("asked", [])),
                       "waiting_for_answer": r.get("pending_question"),
                       "last_score": f"{last['covered']}/{last['total']}" if last else None,
-                      "weak_spots": sorted({m for s in r.get("scores", []) for m in s["missed"]})[:5]})
+                      "weak_spots": sorted({m for s in {x["question_id"]: x for x in r.get("scores", [])}.values()
+                                            for m in s["missed"]})[:5]})
     return {"ok": True, "interviews": items}
 
 
@@ -489,6 +501,14 @@ def cmd_forget(a, sd):
     if brief.exists():
         brief.unlink()
     return {"ok": True, "deleted": rec["id"]}
+
+
+def _out_of_time():
+    """Last resort before the sandbox's 2-minute limit: say so in JSON and stop."""
+    sys.stdout.write(json.dumps({"ok": False, "error": "unreachable", "message": "ran out of time",
+                                 "next": NEXT["unreachable"]}) + "\n")
+    sys.stdout.flush()
+    os._exit(5)
 
 
 class JsonArgs(argparse.ArgumentParser):
@@ -528,6 +548,9 @@ def main(argv=None):
     sub.add_parser("list", parents=[common])
     fg = sub.add_parser("forget", parents=[common])
     fg.add_argument("--all", action="store_true", help="delete every saved interview")
+    watchdog = threading.Timer(110, _out_of_time)
+    watchdog.daemon = True
+    watchdog.start()
     try:
         a = ap.parse_args(argv)
     except Stop as e:
@@ -540,9 +563,9 @@ def main(argv=None):
             result = handlers[a.cmd](a, sd)
         emit(result)
     except Stop as e:
-        emit({"ok": False, "error": e.kind, "message": e.message, "next": e.next, **e.extra}, EXIT[e.kind])
+        emit({"ok": False, "error": e.kind, "message": e.message, "next": e.next, **e.extra}, EXIT.get(e.kind, 1))
     except boards.BoardError as e:
-        emit({"ok": False, "error": e.kind, "message": e.message, "next": NEXT.get(e.kind, "")}, EXIT.get(e.kind, 5))
+        emit({"ok": False, "error": e.kind, "message": e.message, "next": NEXT.get(e.kind, "")}, EXIT.get(e.kind, 1))
     except Exception as e:  # never hand Cubbie a traceback
         emit({"ok": False, "error": "error", "message": f"{type(e).__name__}: {e}",
               "where": traceback.format_exc(limit=3).splitlines()[-3:],

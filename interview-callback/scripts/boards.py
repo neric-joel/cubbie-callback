@@ -10,6 +10,7 @@ import ipaddress
 import json
 import re
 import socket
+import ssl
 import time
 import urllib.error
 import urllib.parse
@@ -58,7 +59,7 @@ class BoardError(Exception):
         self.candidates = candidates or []
 
 
-_PUBLIC = {}
+_PUBLIC = {}  # host -> the vetted public IP we connect to, or None when the host is private
 
 
 def check_public(url):
@@ -69,12 +70,39 @@ def check_public(url):
         raise BoardError("bad_input", "only web links (https://...) can be fetched")
     if host not in _PUBLIC:
         try:
-            addrs = {info[4][0] for info in socket.getaddrinfo(host, None)}
+            addrs = [info[4][0] for info in socket.getaddrinfo(host, None)]
         except (socket.gaierror, UnicodeError, ValueError):
             raise BoardError("unreachable", f"could not find the website {host}")
-        _PUBLIC[host] = all(ipaddress.ip_address(a.split("%")[0]).is_global for a in addrs)
+        ips = [ipaddress.ip_address(a.split("%")[0]) for a in addrs]
+        _PUBLIC[host] = str(ips[0]) if ips and all(ip.is_global for ip in ips) else None
     if not _PUBLIC[host]:
         raise BoardError("bad_input", f"{host} is a private network address, not a public job page")
+    return _PUBLIC[host]
+
+
+class _PinnedHTTPS(http.client.HTTPSConnection):
+    """Connects to the IP check_public vetted, so a second DNS answer can't point us somewhere private."""
+
+    def connect(self):
+        ip = check_public(f"https://{self.host}/")
+        sock = socket.create_connection((ip, self.port), self.timeout)
+        self.sock = ssl.create_default_context().wrap_socket(sock, server_hostname=self.host)
+
+
+class _PinnedHTTP(http.client.HTTPConnection):
+    def connect(self):
+        ip = check_public(f"http://{self.host}/")
+        self.sock = socket.create_connection((ip, self.port), self.timeout)
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_PinnedHTTPS, req)
+
+
+class _PinnedHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        return self.do_open(_PinnedHTTP, req)
 
 
 class _SafeRedirect(urllib.request.HTTPRedirectHandler):
@@ -83,7 +111,21 @@ class _SafeRedirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-_OPENER = urllib.request.build_opener(_SafeRedirect)
+_OPENER = urllib.request.build_opener(_PinnedHTTPSHandler, _PinnedHTTPHandler, _SafeRedirect)
+
+
+def _read_body(resp):
+    """Read in chunks, stopping at MAX_BYTES or the deadline (a server that drips bytes can't hold us)."""
+    chunks, total = [], 0
+    while total < MAX_BYTES:
+        if DEADLINE is not None and time.monotonic() > DEADLINE:
+            raise BoardError("unreachable", "ran out of time reading the job page")
+        piece = resp.read1(65536) if hasattr(resp, "read1") else resp.read(65536)
+        if not piece:
+            break
+        chunks.append(piece)
+        total += len(piece)
+    return b"".join(chunks)[:MAX_BYTES].decode("utf-8", errors="replace")
 
 
 def _open(req, timeout):
@@ -103,7 +145,7 @@ def http_get(url, data=None, headers=None):
         try:
             req = urllib.request.Request(url, data=data, headers=hdrs)
             with _open(req, left) as resp:
-                return resp.status, resp.read(MAX_BYTES).decode("utf-8", errors="replace")
+                return resp.status, _read_body(resp)
         except urllib.error.HTTPError as e:
             if e.code in (404, 410):
                 return e.code, ""
@@ -143,7 +185,7 @@ class _TextParser(HTMLParser):
         if tag in self.SKIP:
             self.skip += 1
         elif tag == "li":
-            self.li += 1
+            self.li = 1
             self.parts.append("\n- ")
         elif tag in self.BLOCK:
             # <li><p>text</p></li> stays one bullet line
@@ -152,8 +194,8 @@ class _TextParser(HTMLParser):
     def handle_endtag(self, tag):
         if tag in self.SKIP:
             self.skip = max(0, self.skip - 1)
-        elif tag == "li":
-            self.li = max(0, self.li - 1)
+        elif tag in ("li", "ul", "ol"):
+            self.li = 0
             self.parts.append("\n")
         elif tag in self.BLOCK:
             self.parts.append(" " if self.li and tag in ("p", "div", "span", "br") else "\n")
@@ -179,14 +221,34 @@ def _split_long(line, limit=280):
             cur = f"{cur} {sentence}".strip()
     if cur:
         out.append(cur)
-    return out
+    wrapped = []
+    for piece in out:  # a "sentence" with no punctuation can still be huge: wrap it on words, then characters
+        while len(piece) > limit:
+            cut = piece.rfind(" ", 0, limit)
+            cut = cut if cut > limit // 2 else limit
+            wrapped.append(piece[:cut].strip())
+            piece = piece[cut:].strip()
+        if piece:
+            wrapped.append(piece)
+    return wrapped
+
+
+MAX_HTML = 400_000
 
 
 def html_to_lines(fragment):
     """Plain-text lines of an HTML fragment: one per paragraph, list item or heading; long ones split by sentence."""
+    fragment = (fragment or "")[:MAX_HTML]
+    if "&lt;" in fragment:
+        fragment = html.unescape(fragment)
+    if fragment.count("<") > fragment.count(">") + 20:  # malformed markup makes HTMLParser crawl; strip tags instead
+        return text_to_lines(re.sub(r"<[^<>]{0,200}>|<", "\n", fragment))
     parser = _TextParser()
-    parser.feed(html.unescape(fragment or "") if "&lt;" in (fragment or "") else (fragment or ""))
-    parser.close()
+    try:
+        parser.feed(fragment)
+        parser.close()
+    except (AssertionError, ValueError):
+        return text_to_lines(re.sub(r"<[^<>]{0,200}>", "\n", fragment))
     lines = []
     for raw in "".join(parser.parts).split("\n"):
         line = re.sub(r"\s+", " ", raw.translate(PUNCT)).strip()
@@ -217,7 +279,7 @@ def parse_link(url):
         raise BoardError("bad_input", f"not a web link: {url!r}")
     if parts.scheme not in ("http", "https") or not parts.netloc:
         raise BoardError("bad_input", f"not a web link: {url!r}")
-    host = parts.netloc.lower().split(":")[0]
+    host = (parts.hostname or "").lower()
     segs = [s for s in parts.path.split("/") if s]
     query = urllib.parse.parse_qs(parts.query)
 
@@ -272,11 +334,29 @@ def _now():
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+MAX_CHARS = 60_000
+
+
+def clean_name(text, cap):
+    """Company and job names are spoken on calls: keep one short plain phrase, nothing that reads as instructions."""
+    text = re.sub(r"\s+", " ", str(text or "")).strip()
+    text = re.split(r"(?<=[.!?;])\s|\s(?=(?:SYSTEM|IGNORE|INSTRUCTIONS?)\b)", text)[0]
+    text = re.sub(r"[^\w &.,'()/+#:@-]", "", text).strip(" .,:;-")
+    return text[:cap].rstrip()
+
+
 def _posting(board, company, title, location, source_url, body_lines, extra=None):
     if not body_lines:
         raise BoardError("not_found", "the posting has no description text")
-    posting = {"board": board, "company": company or "", "title": title or "", "location": location or "",
-               "source_url": source_url, "fetched_at": _now(), "lines": body_lines[:MAX_LINES]}
+    kept, size = [], 0
+    for line in body_lines[:MAX_LINES]:
+        size += len(line)
+        if size > MAX_CHARS:
+            break
+        kept.append(line)
+    posting = {"board": board, "company": clean_name(company, 60), "title": clean_name(title, 100),
+               "location": re.sub(r"[^\w &.,'()/+#:;-]", "", re.sub(r"\s+", " ", str(location or "")))[:160].strip(),
+               "source_url": source_url, "fetched_at": _now(), "lines": kept}
     posting.update(extra or {})
     return posting
 
@@ -485,9 +565,9 @@ def fetch_webpage(url, company=None):
     status, body = http_get(url)
     if status in (404, 410):
         raise BoardError("closed", "that job page is gone (closed or moved)")
-    parser = _JsonLd()
-    parser.feed(body)
-    for block in parser.blocks:
+    blocks = re.findall(r"<script[^>]{0,200}application/ld\+json[^>]{0,100}>(.{0,500000}?)</script>", body[:3_000_000],
+                        re.S | re.I)
+    for block in blocks:
         try:
             job = _find_jobposting(json.loads(block, strict=False))
         except (ValueError, RecursionError):
@@ -498,7 +578,7 @@ def fetch_webpage(url, company=None):
             loc = job.get("jobLocation")
             if isinstance(loc, list):
                 loc = loc[0] if loc else {}
-            addr = loc.get("address") if isinstance(loc, dict) else None
+            addr = loc.get("address") if isinstance(loc, dict) else loc if isinstance(loc, str) else None
             if isinstance(addr, dict):
                 where = ", ".join(text(addr.get(k)) for k in ("addressLocality", "addressRegion") if text(addr.get(k)))
             else:
@@ -762,8 +842,12 @@ def rank(jobs, role, location=None, limit=5):
         j["score"] = title_score(role, j["title"])
         j["covers"] = covers(role, j["title"])
         have = {w.lower() for w in SEASON_YEAR.findall(j["title"] or "")}
+        j["season_mismatch"] = bool(want and have and not want <= have)
         if want and have:  # "Summer 2027" should beat "Fall 2026"
             j["score"] = round(j["score"] + (0.03 if want <= have else -0.1), 3)
+        elif not want:
+            years = [int(y) for y in re.findall(r"20\d\d", j["title"] or "")]
+            j["score"] = round(j["score"] + (0.002 * (max(years) - 2020) if years else 0), 3)
         if location and location_matches(location, j.get("location")):
             j["score"] = round(j["score"] + 0.05, 3)
     jobs.sort(key=lambda j: -j["score"])
@@ -884,6 +968,7 @@ def choose(candidates, min_score=0.75, margin=0.06, location=None):
     there are all the same role, that one wins. Otherwise several postings of one role (one per office) count as one
     match, and the one in the student's place, else a US one, is used; the caller says which office it picked.
     """
+    candidates = [c for c in candidates if not c.get("season_mismatch")] or candidates
     if not candidates:
         return None
     top = candidates[0]

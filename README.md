@@ -164,13 +164,14 @@ Calendar (prep blocks), reminders and phone calls (mock interviews, a 60-second 
 - **No dependencies**: Python 3 standard library only, so nothing to install on Cubbie and nothing to break.
 - **Every failure has a next step**: exit codes 1-8 each map to one line of instructions in `SKILL.md`; the output is
   always valid JSON under Cubbie's 8,000-character read limit, never a traceback.
-- **Safe with untrusted input**: links into private networks are refused (including after redirects), downloads are
-  capped, every run has a 100-second budget, saved files can't escape the Skill's folder, and two runs can't
+- **Safe with untrusted input**: links into private networks are refused (including after redirects and DNS
+  tricks), downloads are capped and read against a 100-second budget with a watchdog, company names that get spoken
+  on calls are cleaned, saved files can't escape the Skill's folder, and two runs can't
   overwrite each other.
 - **Closed postings**: the first fetch is saved, so a posting that closes before the interview still works.
 - **Consent**: calendar events, calls, check-ins and emails always wait for the student's yes. "Stop" and "remove"
   cancel this Skill's scheduled calls first.
-- **Tested**: 59 offline tests (`python -m unittest discover -s tests -v`) with fake responses from every source,
+- **Tested**: 66 offline tests (`python -m unittest discover -s tests -v`) with fake responses from every source,
   closed, unreachable, rate-limited and hostile pages, ambiguous and intern-less searches, invite classification and
   scoring. CI also runs the sample flow and the Cubbie kit's Skill validator. Reviewed by three judge agents (a Cubbie
   engineer, a security and bug hunter, and a student), and their findings fixed.
