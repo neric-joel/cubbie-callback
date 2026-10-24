@@ -42,6 +42,39 @@ also asked to see where Cubbie gets its facts, and said phone calls felt rude or
 | Calls feel rude or hang up | The call reads a fixed, calm script (tough means harder questions, never a harsher voice), and the answer comes back as a voice note, so nothing depends on the call staying open |
 | Wants the invite found in the inbox | Narrow, opt-in search of email events and Gmail; tells an invite from a scheduling request, an online assessment or a rejection |
 
+## Tested on a real Cubbie, Oct 24 2026
+
+From the iMessage thread (texted from a real phone, nothing staged):
+
+```text
+me:     https://github.com/neric-joel/cubbie-callback/tree/main/interview-callback
+Cubbie: This is an interview-prep skill from neric-joel/cubbie-callback. It builds prep briefs from job postings and
+        scores mock answers; its instructions say it needs no keys or extra packages. Want me to install it?
+me:     yes
+Cubbie: Installed interview-callback. No extra packages or sign-in were needed.
+me:     I just got an Amazon SDE intern interview for next Thursday at 2pm!! can you help me prep?
+Cubbie: Your prep brief is ready. Focus on data structures, algorithms, object-oriented design, and your strongest
+        coding language (posting lines 67-68), plus clear project-ownership stories.
+        I used Amazon's Summer 2027 USA posting [link]. I couldn't find the invite, so Thursday, Oct 29 at 2 PM is
+        presumed Arizona time.
+        Your calendar looks free at these times. Want me to book Tue Oct 27 and Wed Oct 28, 7-7:45 PM prep, schedule a
+        relaxed mock call tonight at 8 PM, and a Thursday 1 PM text reminder? You can say "tough" for a harder mock.
+        [brief.pdf]
+me:     skip the calendar for now. tough mode - text me a mock question right now
+Cubbie: Tough mode. How would you design the classes for a parking garage? Name the main objects and defend one
+        design choice.
+me:     [answer: ParkingGarage, Levels, ParkingSpots, a Vehicle base class, park() issues a Ticket...]
+Cubbie: 4/4 in substance. Your class hierarchy and park/exit flow are clear. The scorer missed your design principle,
+        but keeping spot assignment in Level demonstrates encapsulation and separation of responsibilities - that counts.
+        Tough follow-up: two cars simultaneously select the last available spot. How do you prevent both from getting it?
+me:     call me in 1 minute and ask me the next mock question out loud
+Cubbie: Set for 3:06 PM Arizona time. I'll call with the next mock question in tough mode.
+        [the phone rang with the question; a voice note followed]
+```
+
+What we changed after it: the call showed up as "Scam Likely", so the Skill now tells students to save Cubbie's
+number first; and the "that counts" credit is now recorded (`score --credit`) so redos and weak spots agree.
+
 ## What the student sees
 
 ```text
@@ -78,16 +111,20 @@ Live-checked on Oct 24 2026 by company name and role:
 | Company | Found | Source |
 | --- | --- | --- |
 | Amazon | Software Development Engineer Intern - Summer 2027 (USA), Seattle | amazon.jobs API |
+| American Express | 2027 Software Engineer internship, Phoenix AZ | Oracle Recruiting |
 | State Farm | Summer 2027 Intern - MAGNet Program @ Arizona State University, Tempe | jobs.statefarm.com API |
-| Microsoft | Software engineering intern postings, US offices | Microsoft careers (Eightfold) |
+| RTX | Software Engineer Intern, Tucson AZ | Workday (intern filter) |
+| NVIDIA | NVIDIA 2027 Internships: Software Engineering, Santa Clara | Workday (intern filter) |
+| Salesforce | Summer 2027 Intern - Software Engineer, San Francisco and more | Workday |
+| Honeywell | Software Engineer Co-Op - Summer 2027 | Oracle Recruiting |
+| Microsoft, Northrop Grumman | asks which of the open software intern roles | Eightfold, Workday |
 | Lockheed Martin | Software Engineer - Intern, Marietta GA | Eightfold |
-| Northrop Grumman | 2027 Cyber Software Engineer Intern | Workday |
 | Stripe, Palantir, Ramp, Databricks | the matching intern posting, US office | Greenhouse, Lever, Ashby |
+| Boeing, Carvana, Wells Fargo | says there's no open software intern posting right now, and shows the closest | Workday, Greenhouse |
 
-Also searchable by name: Intel, Boeing, RTX, Wells Fargo, PayPal, Salesforce, NVIDIA, Capital One, Micron, Dexcom
-(Workday), and any company on Greenhouse, Lever, Ashby or SmartRecruiters. Any job link works if the page publishes
-standard job data; for everything else (Google, Apple, Meta, Handshake) Cubbie reads the page or a screenshot and
-passes the text in.
+Also searchable by name: Intel, PayPal, Capital One, Micron, Dexcom (Workday), JPMorgan (Oracle), and any company on
+Greenhouse, Lever, Ashby or SmartRecruiters. Any job link works if the page publishes standard job data; for the
+rest (Google, Apple, Meta, Handshake) Cubbie reads the page or a screenshot and passes the text in.
 
 It doesn't guess: if an intern search finds only full-time jobs, it says there's no open intern posting and shows
 the closest ones; if the same role is posted in several offices, it picks the student's place (else a US office) and
@@ -101,7 +138,7 @@ invite email / job link / "interview with X"
         v
 callback.py invite   is it an invite, a scheduling request, an assessment or a rejection? any job links?
 callback.py fetch    public job-board API (no key) -> numbered plain-text lines, saved under HOME
-        |            Greenhouse, Lever, Ashby, SmartRecruiters, Workday, Eightfold, amazon.jobs, State Farm,
+        |            Greenhouse, Lever, Ashby, SmartRecruiters, Workday, Eightfold, Oracle, amazon.jobs, State Farm,
         |            or any page with schema.org JobPosting data
         v
 coach.extract        81 skills matched by section: requirement > part of the job > nice to have; about-us,
@@ -133,7 +170,7 @@ Calendar (prep blocks), reminders and phone calls (mock interviews, a 60-second 
 - **Closed postings**: the first fetch is saved, so a posting that closes before the interview still works.
 - **Consent**: calendar events, calls, check-ins and emails always wait for the student's yes. "Stop" and "remove"
   cancel this Skill's scheduled calls first.
-- **Tested**: 50 offline tests (`python -m unittest discover -s tests -v`) with fake responses from every source,
+- **Tested**: 59 offline tests (`python -m unittest discover -s tests -v`) with fake responses from every source,
   closed, unreachable, rate-limited and hostile pages, ambiguous and intern-less searches, invite classification and
   scoring. CI also runs the sample flow and the Cubbie kit's Skill validator. Reviewed by three judge agents (a Cubbie
   engineer, a security and bug hunter, and a student), and their findings fixed.
