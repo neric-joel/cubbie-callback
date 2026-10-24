@@ -670,12 +670,24 @@
           {
             "label": "idempotency (a unique key per payment)",
             "any": [
-              "idempoten",
+              "already handled",
+              "already processed",
+              "already seen",
+              "check whether we already",
+              "dedup",
               "dedupe",
               "deduplicat",
+              "handled before",
+              "idempoten",
+              "ignore duplicate",
+              "ignore the duplicate",
+              "processed before",
+              "same id twice",
+              "seen before",
+              "skip duplicate",
+              "skip the duplicate",
               "unique id",
-              "unique key",
-              "already processed"
+              "unique key"
             ],
             "cues": [
               "charged twice",

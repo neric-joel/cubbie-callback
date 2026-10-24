@@ -177,11 +177,12 @@ class TestFlow(Base):
         self.assertIn("tough interviewer", out["call_script"])
         self.assertIn("voice note", out["call_script"])
         code, out = run("score", "--sample")
-        self.assertEqual((out["covered"], out["total"]), (3, 4))
-        self.assertEqual(out["missed"], ["idempotency (a unique key per payment)"])
+        self.assertEqual((out["covered"], out["total"]), (2, 4))
+        self.assertEqual(out["missed"], ["idempotency (a unique key per payment)", "store what was processed"])
         self.assertIn("(line 7)", out["texts"][2])
         code, out = run("list", "--sample")
-        self.assertEqual(out["interviews"][0]["weak_spots"], ["idempotency (a unique key per payment)"])
+        self.assertEqual(out["interviews"][0]["weak_spots"], ["idempotency (a unique key per payment)",
+                                                              "store what was processed"])
 
     def test_sample_state_is_separate(self):
         run("fetch", "--sample")
@@ -289,6 +290,272 @@ class TestFlow(Base):
         self.web({})
         code, out = run("fetch", "--company", "Nowhere Inc", "--role", "Intern")
         self.assertEqual(code, 3)
+
+
+AMAZON_SEARCH = {"hits": 2, "jobs": [
+    {"id_icims": "1001", "title": "Software Development Engineer Intern - Summer 2027 (USA)",
+     "normalized_location": "Seattle, Washington, USA", "job_path": "/en/jobs/1001/sde-intern",
+     "description": "Build services for millions of customers.<br/>",
+     "basic_qualifications": "- Experience with Java, Python or C++<br/>- Data structures and algorithms<br/>",
+     "preferred_qualifications": "- Experience with AWS<br/>", "company_name": "Amazon.com Services LLC"},
+    {"id_icims": "1002", "title": "Software Development Engineer Intern - Summer 2027 (CAN)",
+     "normalized_location": "Vancouver, British Columbia, CAN", "job_path": "/en/jobs/1002/sde-intern-can",
+     "description": "x<br/>", "basic_qualifications": "- Java<br/>", "preferred_qualifications": ""}]}
+
+
+class TestJudgeFixes(Base):
+    def test_retry_shows_progress_and_tough_follow_up(self):
+        run("fetch", "--sample")
+        run("question", "--sample", "--tone", "tough")
+        code, first = run("score", "--sample")
+        self.assertIn("follow_up", first)
+        code, out = run("question", "--sample", "--retry")
+        self.assertEqual((code, out["question_id"], out["retry_of"]), (0, "kafka-1", "2/4"))
+        code, out = run("score", "--sample", "--answer", "I'd store an idempotency key per payment, check it before "
+                        "charging, and rely on at-least-once delivery with offsets committed after the write.")
+        self.assertEqual(out["progress"], "2/4 -> 4/4")
+        self.assertTrue(out["texts"][0].startswith("2/4 last time, 4/4 now"))
+
+    def test_pending_question_is_scored_even_after_other_commands(self):
+        run("fetch", "--sample")
+        run("question", "--sample")
+        self.assertEqual(run("list", "--sample")[1]["interviews"][0]["waiting_for_answer"], "kafka-1")
+        run("brief", "--sample")
+        code, out = run("score", "--sample")
+        self.assertEqual(out["question_id"], "kafka-1")
+        self.assertIsNone(run("list", "--sample")[1]["interviews"][0]["waiting_for_answer"])
+
+    def test_every_tech_skill_gets_a_project_question(self):
+        run("fetch", "--sample")
+        rec = callback.load(callback.state_dir(True), None)
+        ids = [q["id"] for q in coach.plan_questions(rec)]
+        self.assertIn("project-kafka", ids)
+        self.assertGreater(len(ids), 9)
+
+    def test_amazon_search_and_link(self):
+        self.web({"https://www.amazon.jobs/en/search.json": (200, AMAZON_SEARCH)})
+        code, out = run("fetch", "--company", "Amazon", "--role", "SDE intern")
+        self.assertEqual((code, out["board"], out["location"]), (0, "amazon", "Seattle, Washington, USA"))
+        self.assertEqual(out["top_skills"][0]["kind"], "must")
+        code, out = run("fetch", "--url", "https://www.amazon.jobs/en/jobs/1001/sde-intern")
+        self.assertEqual((code, out["status"]), (0, "fetched"))
+
+    def test_whole_board_link_needs_a_role(self):
+        self.assertIsNone(boards.parse_link("https://jobs.ashbyhq.com/cactus")["job_id"])
+        code, out = run("fetch", "--url", "https://jobs.ashbyhq.com/cactus")
+        self.assertEqual(code, 2)
+        self.assertIn("--role", out["next"])
+        self.web({"https://api.ashbyhq.com/posting-api/job-board/cactus": (200, ASHBY_BOARD)})
+        code, out = run("fetch", "--url", "https://jobs.ashbyhq.com/cactus", "--role", "PM intern")
+        self.assertEqual((code, out["title"]), (0, "Product Manager Intern"))
+
+    def test_guessed_greenhouse_board_falls_back_to_the_page(self):
+        self.web({"https://careers.paloverde.example/role?gh_jid=77": (200, WEBPAGE)})
+        link = boards.parse_link("https://careers.paloverde.example/role?gh_jid=77")
+        self.assertEqual(link["slug"], "paloverde")
+        code, out = run("fetch", "--url", "https://careers.paloverde.example/role?gh_jid=77")
+        self.assertEqual((code, out["board"]), (0, "webpage"))
+
+    def test_location_matching_and_foreign_only_matches(self):
+        self.assertTrue(boards.location_matches("Arizona", "US, Arizona, Chandler"))
+        self.assertTrue(boards.location_matches("AZ", "Phoenix, Arizona"))
+        self.assertTrue(boards.location_matches("arizona", "Tempe, AZ"))
+        self.assertFalse(boards.location_matches("Arizona", "PRC, Shanghai"))
+        cands = [{"title": "SWE Intern", "score": 1.0, "location": "PRC, Shanghai", "url": "u"}]
+        self.assertIsNone(boards.choose(cands, location="Arizona"))
+        self.assertIsNotNone(boards.choose(cands))
+
+    def test_ids_cannot_escape_the_state_folder(self):
+        run("fetch", "--sample")
+        for bad in ("../../etc/passwd", "..\\x", "a/b", ""):
+            code, out = run("forget", "--sample", "--id", bad) if bad else run("forget", "--sample")
+            self.assertEqual(code, 2, bad)
+
+    def test_forget_all(self):
+        run("fetch", "--sample")
+        code, out = run("forget", "--sample", "--all")
+        self.assertEqual(code, 0)
+        self.assertEqual(run("list", "--sample")[1]["interviews"], [])
+
+    def test_missing_file_and_crash_are_json(self):
+        code, out = run("score", "--answer-file", "nope.txt")
+        self.assertEqual(code, 7)  # no interview yet comes first
+        run("fetch", "--sample")
+        run("question", "--sample")
+        code, out = run("score", "--sample", "--answer-file", "nope.txt")
+        self.assertEqual(code, 2)
+
+        def boom(url, data=None, headers=None):
+            raise RuntimeError("surprise")
+        boards.http_get = boom
+        code, out = run("fetch", "--url", "https://jobs.lever.co/mesa/x")
+        self.assertEqual((code, out["error"]), (1, "error"))
+
+    def test_paraphrase_counts_and_boilerplate_is_ignored(self):
+        run("fetch", "--sample")
+        run("question", "--sample")
+        code, out = run("score", "--sample", "--answer", "Before charging I check whether we already handled that "
+                        "event id in a table, so a duplicate from at-least-once delivery is skipped.")
+        self.assertTrue(out["points"][0]["covered"])
+        lines = ["Requirements", "- Python and SQL", "- Must be able to obtain a security clearance.",
+                 "We are an equal opportunity employer regardless of gender identity or disability.",
+                 "- Networking opportunities with leaders"]
+        found = {s["term"] for s in coach.extract(lines)}
+        self.assertEqual(found, {"Python", "SQL"})
+        self.assertIn("work authorization", coach.facts(lines))
+        self.assertNotIn("gender", coach.posting_keywords(lines, "Acme"))
+
+    def test_negated_phrases_do_not_count(self):
+        q = {"id": "x", "line": None, "points": [{"label": "idem", "phrases": ["idempoten"], "number": False}]}
+        self.assertEqual(coach.score_answer(q, "Honestly I don't know idempotency that well at all")["covered"], 0)
+        self.assertEqual(coach.score_answer(q, "I made the handler idempotent with a stored key")["covered"], 1)
+
+    def test_headline_skips_soft_skills_and_quotes_cut_on_words(self):
+        rec = {"skills": coach.extract(["Requirements", "- Communication and teamwork", "- Python and SQL"])}
+        self.assertNotIn("Communication", coach.headline(rec))
+        q = coach.quote("word " * 60, 30)
+        self.assertTrue(q.endswith("word...") or q.endswith("word"), q)
+
+
+EIGHTFOLD_SEARCH = {"data": {"positions": [
+    {"id": 555, "name": "Software Engineer Intern Opportunities for University Students", "locations": ["United States, Washington, Redmond"]},
+    {"id": 556, "name": "Senior Software Engineer", "locations": ["United States, Washington, Redmond"]}]}}
+EIGHTFOLD_JOB = {"data": {"name": "Software Engineer Intern Opportunities for University Students",
+                          "locations": ["United States, Washington, Redmond"], "publicUrl": "https://apply.careers.microsoft.com/careers/job/555",
+                          "jobDescription": "<b>Qualifications</b><ul><li>C#, Java or Python</li><li>Data structures</li></ul>"}}
+JOBS_API = {"jobs": [{"data": {"slug": "46353", "title": "Summer 2027 Intern - MAGNet Program @ Arizona State University",
+                               "city": "Tempe", "state": "Arizona"}},
+                     {"data": {"slug": "46400", "title": "Summer 2027 Intern - MAGNet Program @ University of Georgia",
+                               "city": "Athens", "state": "Georgia"}}]}
+WORKDAY_LIST = {"jobPostings": [{"title": "Software Engineer Intern", "locationsText": "3 Locations",
+                                 "externalPath": "/job/US-Arizona-Chandler/Software-Engineer-Intern_R1"},
+                                {"title": "Program Manager", "locationsText": "US, Virginia", "externalPath": "/job/x_R2"}]}
+WORKDAY_DETAIL = {"jobPostingInfo": {"title": "Software Engineer Intern", "location": "US, Virginia, Falls Church",
+                                     "additionalLocations": ["US, Arizona, Chandler", "US, Florida, Melbourne"],
+                                     "jobDescription": "<p>Basic Qualifications:</p><ul><li>C++ and Linux</li></ul>"}}
+
+
+class TestMoreBoards(Base):
+    def test_microsoft_eightfold_search_and_link(self):
+        self.web({"https://apply.careers.microsoft.com/api/pcsx/search": (200, EIGHTFOLD_SEARCH),
+                  "https://apply.careers.microsoft.com/api/pcsx/position_details": (200, EIGHTFOLD_JOB)})
+        code, out = run("fetch", "--company", "Microsoft", "--role", "Software Engineer Intern")
+        self.assertEqual((code, out["board"], out["company"]), (0, "eightfold", "Microsoft"))
+        link = boards.parse_link("https://apply.careers.microsoft.com/careers/job/555")
+        self.assertEqual((link["board"], link["job_id"], link["domain"]), ("eightfold", "555", "microsoft.com"))
+
+    def test_jobs_api_site_picks_the_students_campus(self):
+        self.web({"https://jobs.statefarm.com/api/jobs": (200, JOBS_API),
+                  "https://jobs.statefarm.com/main/jobs/46353": (200, WEBPAGE)})
+        code, out = run("fetch", "--company", "State Farm", "--role", "MAGNet intern", "--location", "Arizona")
+        self.assertEqual((code, out["status"]), (0, "matched"))
+        self.assertTrue(boards.http_get.calls[-1].endswith("/main/jobs/46353"))
+
+    def test_workday_alias_display_name_and_real_offices(self):
+        self.web({"https://ngc.wd1.myworkdayjobs.com/wday/cxs/ngc/Northrop_Grumman_External_Site/jobs": (200, WORKDAY_LIST),
+                  "https://ngc.wd1.myworkdayjobs.com/wday/cxs/ngc/Northrop_Grumman_External_Site/job/": (200, WORKDAY_DETAIL)})
+        code, out = run("fetch", "--company", "Northrop Grumman", "--role", "Software Engineer Intern", "--location", "Arizona")
+        self.assertEqual((code, out["company"]), (0, "Northrop Grumman"))
+        self.assertIn("Arizona", out["location"])
+        self.assertNotIn("location_note", out)
+
+    def test_intern_search_never_returns_a_full_time_job(self):
+        listing = {"jobs": [{"id": 1, "title": "Software Engineer", "absolute_url": "https://x/1", "location": {"name": "Tempe, AZ"}},
+                            {"id": 2, "title": "Customer Experience Intern", "absolute_url": "https://x/2", "location": {"name": "Tempe, AZ"}}]}
+        self.web({"https://boards-api.greenhouse.io/v1/boards/acme/jobs": (200, listing)})
+        code, out = run("fetch", "--company", "Acme", "--role", "Software Engineer Intern")
+        self.assertEqual((code, out["error"]), (3, "no_intern"))
+        self.assertEqual(out["closest"][0]["title"], "Customer Experience Intern")
+
+    def test_rate_limit_is_retried_once_and_private_hosts_are_refused(self):
+        import urllib.error
+        attempts = []
+
+        class Resp(io.BytesIO):
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def fake_open(req, timeout):
+            attempts.append(req.full_url)
+            if len(attempts) == 1:
+                raise urllib.error.HTTPError(req.full_url, 429, "Too Many", {"Retry-After": "0"}, None)
+            return Resp(json.dumps(LEVER_JOB).encode())
+        real_open, real_check = boards._open, boards.check_public
+        boards._open, boards.check_public = fake_open, lambda url: None
+        try:
+            status, body = self._http("https://api.lever.co/v0/postings/mesa/aaaa-1111")
+        finally:
+            boards._open, boards.check_public = real_open, real_check
+        self.assertEqual((status, len(attempts)), (200, 2))
+        boards.http_get = self._http
+        for url in ("http://127.0.0.1:8765/x", "http://169.254.169.254/latest", "http://10.0.0.5/jobs/1"):
+            code, out = run("fetch", "--url", url)
+            self.assertEqual(code, 2, url)
+
+
+class TestCodeJudge(Base):
+    def test_bullets_wrapping_paragraphs_keep_their_skills(self):
+        self.assertIn("Python", {s["term"] for s in coach.extract(boards.html_to_lines(
+            "<h3>Requirements</h3><ul><li><p>Strong Python skills required</p></li></ul>"))})
+        self.assertIn("Python", {s["term"] for s in coach.extract(boards.text_to_lines(
+            "Requirements\n• Python skills required"))})
+        self.assertIn("Python", {s["term"] for s in coach.extract(["About the internship", "You will build APIs in Python"])})
+
+    def test_facts_need_their_real_meaning(self):
+        self.assertEqual(coach.facts(["Pay: $25/hr", "a", "b"])["pay"]["line"], 1)
+        self.assertNotIn("pay", coach.facts(["Acme processed $2 billion in payments", "a"]))
+        self.assertNotIn("work authorization", coach.facts(["Visa is a world leader in payments", "opt out anytime"]))
+
+    def test_output_always_fits_and_parses(self):
+        f = Path(self.tmp.name) / "big.txt"
+        f.write_text("Interview invite\n" + "\n".join(f"https://jobs.lever.co/acme/{i:040d}" for i in range(300)),
+                     encoding="utf-8")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            with self.assertRaises(SystemExit):
+                callback.main(["invite", "--email-file", str(f)])
+        self.assertLessEqual(len(out.getvalue()), 8000)
+        self.assertIn("next", json.loads(out.getvalue()))
+
+    def test_odd_json_ld_never_crashes(self):
+        page = ('<script type="application/ld+json">{"@type": "https://schema.org/JobPosting", "title": ["Intern"], '
+                '"jobLocation": {"address": "Tempe, AZ"}, "hiringOrganization": "Acme", '
+                '"description": "<p>Requirements:</p><ul><li>Python\tand SQL\n</li></ul>"}</script><script type>x</script>')
+        self.web({"https://careers.acme.example/job/1": (200, page)})
+        code, out = run("fetch", "--url", "https://careers.acme.example/job/1")
+        self.assertEqual((code, out["location"]), (0, "Tempe, AZ"))
+        self.web({"https://careers.acme.example/job/2": (200, '<script type="application/ld+json">' + "[" * 50000 + "</script>")})
+        self.assertEqual(run("fetch", "--url", "https://careers.acme.example/job/2")[0], 5)
+
+    def test_rescheduling_is_not_a_rejection(self):
+        self.assertNotEqual(coach.classify_email("Unfortunately our engineer can't make Tuesday. Can we move your interview "
+                                                 "to Wednesday? https://zoom.us/j/1", boards.parse_link)["category"], "rejection")
+        self.assertEqual(coach.classify_email("We regret to inform you that the position has been filled.",
+                                              boards.parse_link)["category"], "rejection")
+
+    def test_score_finds_the_interview_waiting_for_an_answer(self):
+        f = Path(self.tmp.name) / "p.txt"
+        f.write_text("Requirements:\n- Python and SQL\n- Kafka\n", encoding="utf-8")
+        run("fetch", "--text-file", str(f), "--company", "B Co", "--role", "Data Intern")
+        b = run("list")[1]["interviews"][0]["id"]
+        run("question", "--id", b)
+        run("fetch", "--text-file", str(f), "--company", "A Co", "--role", "Data Intern")
+        code, out = run("score", "--answer", "I would store an idempotency key per event and check it before writing.")
+        self.assertEqual((code, out["id"]), (0, b))
+
+    def test_bad_arguments_and_forget_all_stay_in_scope(self):
+        code, out = run("question", "--tone", "angry")
+        self.assertEqual((code, out["error"]), (2, "bad_input"))
+        keep = Path(self.tmp.name) / "notes.txt"
+        keep.write_text("mine", encoding="utf-8")
+        run("fetch", "--sample")
+        run("forget", "--all")
+        self.assertTrue(keep.exists())
 
 
 class TestInvites(unittest.TestCase):

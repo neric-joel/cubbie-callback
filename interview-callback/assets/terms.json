@@ -27,7 +27,7 @@
     {
       "term": "C",
       "cat": "language",
-      "regex": "(?<![\\w+#/.-])C(?=/C\\+\\+|,\\s*C\\+\\+| and C\\+\\+| or C\\+\\+| programming| language)"
+      "regex": "(?<![\\w+#/.-])C(?=/C\\+\\+|,\\s*C\\+\\+| and C\\+\\+| or C\\+\\+| programming| language)|(?<=with )C(?=[ ,/)]|$)|(?<=in )C(?=[ ,/)]|$)"
     },
     {
       "term": "C#",
@@ -42,7 +42,7 @@
     {
       "term": "Go",
       "cat": "language",
-      "regex": "\\b[Gg]olang\\b|(?:(?<=[,/(] )|(?<=[/(])|(?<= or )|(?<= and ))Go\\b(?![-'’])|\\bGo(?=,| or | and |/|\\))"
+      "regex": "\\b[Gg]olang\\b|(?:(?<=[,/(] )|(?<=[/(])|(?<= or )|(?<= and )|(?<=with )|(?<=in )|(?<=of )|(?<=using ))Go\\b(?![-'’])|\\bGo(?=,| or | and |/|\\))"
     },
     {
       "term": "Rust",
@@ -77,10 +77,7 @@
     {
       "term": "Swift",
       "cat": "language",
-      "aliases": [
-        "swift",
-        "swiftui"
-      ]
+      "regex": "\\bSwift(?:UI)?\\b(?!\\s+(?:delivery|response|action|turnaround|pace|decisions?)\\b)"
     },
     {
       "term": "Ruby",
@@ -175,12 +172,7 @@
     {
       "term": "Spark",
       "cat": "data",
-      "aliases": [
-        "spark",
-        "pyspark",
-        "hadoop",
-        "databricks"
-      ]
+      "regex": "\\b(?:Apache Spark|PySpark|Spark(?!\\s+(?:curiosity|joy|interest|innovation|ideas|change|conversations?|creativity))|Hadoop|Databricks)\\b"
     },
     {
       "term": "Data pipelines",
@@ -208,14 +200,7 @@
     {
       "term": "React",
       "cat": "framework",
-      "aliases": [
-        "react",
-        "react.js",
-        "reactjs",
-        "react native",
-        "next.js",
-        "nextjs"
-      ]
+      "regex": "\\b(?:React(?:\\.js|JS| Native)?\\b(?!\\s+(?:to|quickly|fast|well)\\b)|[Rr]eactjs\\b|Next\\.js|NextJS)"
     },
     {
       "term": "Angular/Vue",
@@ -320,7 +305,8 @@
         "fault tolerance",
         "fault-tolerant",
         "reliability"
-      ]
+      ],
+      "not": "at scale(?! system)|reliability engineer"
     },
     {
       "term": "System design",
@@ -445,8 +431,7 @@
         "kubernetes",
         "k8s",
         "eks",
-        "gke",
-        "helm"
+        "gke"
       ]
     },
     {
@@ -505,7 +490,8 @@
         "tcp",
         "dns",
         "network protocols"
-      ]
+      ],
+      "not": "networking (opportunit|event|session)|professional networking|network(ing)? with (peers|leaders|other)"
     },
     {
       "term": "Security",
@@ -520,7 +506,8 @@
         "threat",
         "secure coding",
         "iam"
-      ]
+      ],
+      "not": "security clearance|social security|clearance|securities"
     },
     {
       "term": "Observability",
@@ -545,7 +532,8 @@
         "optimize",
         "profiling",
         "low-latency"
-      ]
+      ],
+      "not": "performance (review|evaluation|bonus|management|appraisal)|high[- ]performance team|performance-based|performance improvement plan"
     },
     {
       "term": "Machine learning",
@@ -640,7 +628,6 @@
         "analyze data",
         "analyzing data",
         "data-driven",
-        "insights",
         "pandas",
         "numpy",
         "jupyter"
@@ -662,14 +649,7 @@
     {
       "term": "Excel",
       "cat": "tool",
-      "aliases": [
-        "excel",
-        "spreadsheets",
-        "spreadsheet",
-        "google sheets",
-        "vba",
-        "pivot tables"
-      ]
+      "regex": "\\b(?:Excel\\b(?!\\s+(?:at|in|as|with)\\b)|MS Excel|[Ss]preadsheets?\\b|Google Sheets|VBA\\b|[Pp]ivot [Tt]ables?)"
     },
     {
       "term": "Financial modeling",
@@ -722,7 +702,6 @@
         "social media",
         "content creation",
         "campaigns",
-        "brand",
         "go-to-market"
       ]
     },
@@ -781,7 +760,6 @@
         "analog",
         "digital design",
         "semiconductor",
-        "silicon",
         "fpga",
         "asic",
         "post-silicon",
@@ -791,14 +769,7 @@
     {
       "term": "CAD",
       "cat": "hardware",
-      "aliases": [
-        "cad",
-        "solidworks",
-        "autocad",
-        "catia",
-        "creo",
-        "fusion 360"
-      ]
+      "regex": "(?<![\\d$] )(?<!\\$)\\bCAD\\b(?!\\s?[\\d$])|\\b(?:SolidWorks|AutoCAD|CATIA|Creo|Fusion 360|NX CAD)\\b"
     },
     {
       "term": "Communication",
@@ -902,9 +873,9 @@
         "leadership",
         "lead projects",
         "mentorship",
-        "mentoring",
-        "influence"
-      ]
+        "mentoring"
+      ],
+      "not": "leadership (team|experiences? (with|at)|development program)|senior leadership|executive leadership"
     }
   ]
 }
