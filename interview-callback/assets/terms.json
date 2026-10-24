@@ -742,13 +742,18 @@
       "term": "Embedded systems",
       "cat": "hardware",
       "aliases": [
-        "embedded",
         "firmware",
         "microcontroller",
         "microcontrollers",
         "rtos",
         "arduino",
-        "raspberry pi"
+        "raspberry pi",
+        "embedded systems",
+        "embedded software",
+        "embedded firmware",
+        "embedded devices",
+        "embedded c",
+        "embedded linux"
       ]
     },
     {

@@ -244,6 +244,10 @@ def parse_link(url):
         job_id = query["pid"][0] if "pid" in query else segs[segs.index("job") + 1] if segs.index("job") + 1 < len(segs) else ""
         if job_id.isdigit():
             return {"board": "eightfold", "host": host, "domain": site[1], "job_id": job_id}
+    if host.endswith("oraclecloud.com") and "sites" in segs and "job" in segs:
+        site_i, job_i = segs.index("sites") + 1, segs.index("job") + 1
+        if site_i < len(segs) and job_i < len(segs) and segs[job_i].isdigit():
+            return {"board": "oracle", "host": host, "site": segs[site_i], "job_id": segs[job_i]}
     if host in ("amazon.jobs", "www.amazon.jobs") and "jobs" in segs[:-1]:
         job_id = segs[segs.index("jobs") + 1]
         if job_id.isdigit():
@@ -535,6 +539,8 @@ def fetch_link(link, company=None):
         return fetch_amazon(link["job_id"], company)
     if board == "eightfold":
         return fetch_eightfold(link["host"], link["domain"], link["job_id"], company)
+    if board == "oracle":
+        return fetch_oracle(link["host"], link["site"], link["job_id"], company)
     return fetch_webpage(link["url"], company)
 
 
@@ -547,7 +553,7 @@ def fetch_by_link(url, company=None):
 ROLE_EXPANSIONS = {
     "swe": "software engineer", "sde": "software develop engineer", "pm": "product manager",
     "ml": "machine learning", "ai": "artificial intelligence", "ds": "data scientist", "internship": "intern",
-    "interns": "intern", "co": "", "op": "intern", "coop": "intern", "eng": "engineer", "engineering": "engineer",
+    "interns": "intern", "internships": "intern", "co": "", "op": "intern", "coop": "intern", "eng": "engineer", "engineering": "engineer",
     "dev": "develop", "developer": "develop", "development": "develop", "jr": "junior", "sr": "senior",
 }
 ROLE_NOISE = {"summer", "fall", "spring", "winter", "the", "a", "an", "and", "or", "of", "for", "at", "role", "position",
@@ -641,20 +647,91 @@ def _list_smartrecruiters(slug, role):
              "fetch": {"board": "smartrecruiters", "slug": slug, "job_id": str(j.get("id"))}} for j in d.get("content") or []]
 
 
+def search_text(role):
+    """What to type into a career site's search box: SWE -> software engineer, no punctuation, no season or year."""
+    words = [w for w in normalize_title(role) if w not in ("intern", "develop")] or normalize_title(role)
+    text = " ".join(words)
+    return text.strip()
+
+
+def _workday_post(tenant, wd, site, body):
+    return get_json(f"https://{tenant}.{wd}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs",
+                    data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})[1] or {}
+
+
+def _workday_intern_facet(first):
+    for name in ("workerSubType", "jobFamilyGroup", "jobFamily", "timeType"):
+        for f in first.get("facets") or []:
+            if f.get("facetParameter") != name:
+                continue
+            ids = [v["id"] for v in f.get("values") or []
+                   if re.search(r"intern|co-?op|student|early career", v.get("descriptor") or "", re.I)
+                   and not re.search(r"non-?us", v.get("descriptor") or "", re.I)]
+            if ids:
+                return {name: ids}
+    return {}
+
+
 def _list_workday(key, role):
     tenant, wd, site = WORKDAY_TENANTS[key]
-    payload = json.dumps({"appliedFacets": {}, "limit": 20, "offset": 0, "searchText": role}).encode()
-    status, d = get_json(f"https://{tenant}.{wd}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs", data=payload,
-                         headers={"Content-Type": "application/json"})
-    if not d:
-        return []
+    facets = {}
+    if INTERN.search(role):
+        facets = _workday_intern_facet(_workday_post(tenant, wd, site, {"appliedFacets": {}, "limit": 1, "offset": 0,
+                                                                        "searchText": ""}))
     out = []
-    for j in d.get("jobPostings") or []:
-        path = (j.get("externalPath") or "").lstrip("/")
-        out.append({"board": "workday", "title": j.get("title"), "location": j.get("locationsText"),
-                    "url": f"https://{tenant}.{wd}.myworkdayjobs.com/{site}/{path}",
-                    "fetch": {"board": "workday", "slug": tenant, "wd": wd, "site": site, "job_path": path}})
+    queries = [search_text(role)] + ([search_text(role).split()[0], ""] if facets else [])
+    for query in dict.fromkeys(queries):
+        for offset in range(0, 100, 20):
+            d = _workday_post(tenant, wd, site, {"appliedFacets": facets, "limit": 20, "offset": offset,
+                                                 "searchText": query})
+            posts = d.get("jobPostings") or []
+            for j in posts:
+                path = (j.get("externalPath") or "").lstrip("/")
+                out.append({"board": "workday", "title": j.get("title"), "location": j.get("locationsText"),
+                            "url": f"https://{tenant}.{wd}.myworkdayjobs.com/{site}/{path}",
+                            "fetch": {"board": "workday", "slug": tenant, "wd": wd, "site": site, "job_path": path}})
+            if len(posts) < 20:
+                break
+        if out:
+            break
     return out
+
+
+# Oracle Recruiting Cloud sites: key -> (host, site number, display name)
+ORACLE_SITES = {
+    "americanexpress": ("egug.fa.us2.oraclecloud.com", "CX_1", "American Express"),
+    "honeywell": ("ibqbjb.fa.ocs.oraclecloud.com", "CX_1", "Honeywell"),
+    "jpmorgan": ("jpmc.fa.oraclecloud.com", "CX_1001", "JPMorgan Chase"),
+}
+ORACLE_ALIASES = {"americanexpress": "americanexpress", "amex": "americanexpress", "honeywell": "honeywell",
+                  "jpmorgan": "jpmorgan", "jpmorganchase": "jpmorgan", "jpmc": "jpmorgan", "chase": "jpmorgan",
+                  "jpmorganchaseco": "jpmorgan"}
+ORACLE_API = "/hcmRestApi/resources/latest"
+
+
+def _list_oracle(key, role):
+    host, site, _ = ORACLE_SITES[key]
+    q = urllib.parse.quote(" ".join(normalize_title(role)).replace("develop", "development"))
+    status, d = get_json(f"https://{host}{ORACLE_API}/recruitingCEJobRequisitions?onlyData=true&expand=requisitionList"
+                         f"&finder=findReqs;siteNumber={site},keyword={q},limit=50")
+    items = ((d or {}).get("items") or [{}])[0].get("requisitionList") or []
+    return [{"board": "oracle", "title": r.get("Title"), "location": r.get("PrimaryLocation"),
+             "url": f"https://{host}/hcmUI/CandidateExperience/en/sites/{site}/job/{r.get('Id')}",
+             "fetch": {"board": "oracle", "host": host, "site": site, "job_id": str(r.get("Id"))}} for r in items]
+
+
+def fetch_oracle(host, site, job_id, company=None):
+    status, d = get_json(f"https://{host}{ORACLE_API}/recruitingCEJobRequisitionDetails?expand=all&onlyData=true"
+                         f"&finder=ById;Id=%22{urllib.parse.quote(job_id)}%22,siteNumber={site}")
+    items = (d or {}).get("items") or []
+    if not items:
+        raise BoardError("closed", f"Oracle posting {job_id} on {host} is closed or does not exist")
+    j = items[0]
+    body = "".join(j.get(k) or "" for k in ("ExternalDescriptionStr", "ExternalResponsibilitiesStr",
+                                            "ExternalQualificationsStr"))
+    name = next((n for h, _, n in ORACLE_SITES.values() if h == host), pretty_company(host.split(".")[0]))
+    return _posting("oracle", company or name, j.get("Title"), j.get("PrimaryLocation"),
+                    f"https://{host}/hcmUI/CandidateExperience/en/sites/{site}/job/{job_id}", html_to_lines(body))
 
 
 def list_board(link, role):
@@ -664,6 +741,16 @@ def list_board(link, role):
     if not jobs:
         raise BoardError("not_found", f"no open postings on {pretty_company(link['slug'])}'s {link['board']} board")
     return rank(jobs, role)
+
+
+GENERIC = {"intern", "engineer", "develop", "analyst", "associate", "program", "summer", "student", "co", "op"}
+
+
+def _covers_discipline(role, title):
+    """The role's specific words (software, data, finance...) all appear in the title."""
+    want = [w for w in normalize_title(role) if w not in GENERIC]
+    have = normalize_title(title)
+    return bool(want) and all(w in have for w in want)
 
 
 SEASON_YEAR = re.compile(r"\b(summer|fall|spring|winter|20\d\d)\b", re.I)
@@ -681,8 +768,8 @@ def rank(jobs, role, location=None, limit=5):
             j["score"] = round(j["score"] + 0.05, 3)
     jobs.sort(key=lambda j: -j["score"])
     best = jobs[0]["title"]
-    same_title = [j for j in jobs if same_role(j["title"], best)][:12]
-    return same_title + [j for j in jobs if not same_role(j["title"], best)][:limit]
+    same_title = [j for j in jobs if same_role(j["title"], best)]
+    return same_title + [j for j in jobs if not same_role(j["title"], best)]  # callers trim what they show
 
 
 def search(company, role, location=None, limit=5):
@@ -697,6 +784,12 @@ def search(company, role, location=None, limit=5):
             jobs += _list_eightfold(EIGHTFOLD_ALIASES[slug], role)
         if slug in JOBS_API_SITES:
             jobs += _list_jobs_api(slug, role)
+        if slug in ORACLE_ALIASES:
+            jobs += _list_oracle(ORACLE_ALIASES[slug], role)
+        supported = slug in AMAZON_NAMES or slug in WORKDAY_ALIASES or slug in EIGHTFOLD_ALIASES or \
+            slug in JOBS_API_SITES or slug in ORACLE_ALIASES
+        if supported and not jobs and INTERN.search(role):
+            raise BoardError("no_intern", f"{company} has no open intern posting matching '{role}' right now")
         if not jobs:
             for lister in (_list_greenhouse, _list_lever, _list_ashby):
                 jobs += lister(slug)
@@ -710,19 +803,19 @@ def search(company, role, location=None, limit=5):
     if INTERN.search(role):
         interns = [j for j in jobs if INTERN.search(j.get("title") or "")]
         if not interns:
-            closest = rank(jobs, role, location, 3)[:3]
             raise BoardError("no_intern", f"{company} has no open intern posting matching '{role}' right now",
-                             candidates=closest)
+                             candidates=order_for_student(rank(jobs, role, location, 3), location)[:3])
         jobs = interns
     ranked = rank(jobs, role, location, limit)
-    if INTERN.search(role) and ranked[0]["score"] < 0.6:
+    relevant = [j for j in ranked if j["score"] >= 0.7 or j.get("covers") or _covers_discipline(role, j["title"])]
+    if INTERN.search(role) and not relevant:
         raise BoardError("no_intern", f"{company} has no open intern posting close to '{role}' right now",
-                         candidates=ranked[:3])
+                         candidates=order_for_student(ranked, location)[:3])
     _workday_offices(ranked)
     return ranked
 
 
-INTERN = re.compile(r"\b(intern|interns|internship|co-?op|apprentice\w*|summer analyst|student)\b", re.I)
+INTERN = re.compile(r"\b(intern(?:s|ships?)?|co-?ops?|apprentice\w*|summer (?:analyst|associate)s?|students?)\b", re.I)
 
 
 def _workday_offices(cands):
@@ -766,10 +859,8 @@ NON_US = re.compile(r"\b(canada|united kingdom|uk|gbr|england|scotland|ireland|i
 
 
 def is_us(location):
-    text = str(location or "")
-    if NON_US.search(text):
-        return False
-    return bool(US_STATE.search(text) or US_PLACE.search(text))
+    parts = [p for p in re.split(r"[;|]", str(location or "")) if p.strip()] or [""]
+    return any(not NON_US.search(p) and bool(US_STATE.search(p) or US_PLACE.search(p)) for p in parts)
 
 
 def location_matches(wanted, location):
@@ -815,6 +906,11 @@ def choose(candidates, min_score=0.75, margin=0.06, location=None):
     us = [c for c in same if is_us(c.get("location"))]
     if location and not us:
         return None
+    if not us and not location:
+        # Nothing for this exact title in the US: a US posting that has every word of the role still beats it.
+        alt = [c for c in candidates if is_us(c.get("location")) and (c.get("covers") or c["score"] >= top["score"] - 0.15)]
+        if alt:
+            return alt[0]
     return (us or same)[0]
 
 

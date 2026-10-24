@@ -62,13 +62,16 @@ Use whatever the student gave you, in this order:
    - `schedule_request`: they still have to pick a time. Offer to draft a reply with three free slots from their
      calendar; send it only after the student says yes. Then continue with the posting.
    - `interview` or `interview_confirmed`: use `job_links[0]` if there is one, else the company and role.
-3. **Just a company** ("interview with Stripe Thursday"): if email is connected, look for the invite as above;
+3. **A company and role** ("Amazon SDE intern interview Thursday"): go to step 2 with `--company` and `--role`.
+4. **Just a company** ("interview with Stripe Thursday"): if email is connected, look for the invite as above;
    otherwise ask one question: "What's the role? A job link works best."
 
 Take the interview date, time and time zone from the email or the student. If you don't have them, ask once
 ("When's the interview?") and move on if they don't know. Show times in the student's time zone, adding the
 original zone when it differs ("Thu 2:00 PM your time (1:00 PM PT)"); Arizona does not change clocks for daylight
-saving. Pass the time with `--when` on `fetch` or `brief`.
+saving. Pass the time with `--when` on `fetch` or `brief` as an absolute date ("Thu Oct 29, 2:00 PM MST"), never
+"next Thursday", because the brief and later check-ins read it days from now. Remember the interview's company, role
+and time.
 
 If email isn't connected and the student asks you to check it, say so, offer to connect it, and ask for the job
 link meanwhile.
@@ -98,9 +101,10 @@ Never fill in posting content yourself. If all you have is the invite email, say
 
 ### 3. Send the brief
 
-Run `brief`. Turn the Markdown file at `brief_path` into a one-page PDF (or a Google Doc if the student prefers),
-keeping the line citations and the numbered posting at the end, because the numbers are how the student checks
-every point. Send the `texts` as separate short messages, then the document.
+Run `brief`. Turn the Markdown file at `brief_path` into a PDF (or a Google Doc if the student prefers): the brief
+on the first page, the numbered posting after it, because the line numbers are how the student checks every point.
+Send the `texts` as separate short messages, then the document. If the texts include "Check this first" (a
+security clearance or citizenship requirement), lead with it.
 
 ### 4. Offer one prep plan (ask once)
 
@@ -125,17 +129,21 @@ Run `question` (add `--tone tough` if they asked, `--term "<skill>"` to practice
 as the one waiting for an answer.
 
 - **Now, by text**: send `text_version`.
-- **As a call**: before the first mock call, text the student the number the call will come from and suggest
-  saving it as a contact named "Cubbie": carriers label unknown numbers "Scam Likely", and students don't pick those
-  up. Then create a one-time call at the time they picked. A scheduled call runs later on its own, so put the
-  question in it word for word:
+- **As a call**: before the first mock call, tell the student the call may show up as "Scam Likely", and to save
+  the number it comes from as "Cubbie" so it rings through. Give the number only if you know it exactly; never guess.
+  Then create a one-time call at the time they picked. A scheduled call runs later on its own, so put the question in
+  it word for word:
 
   ```text
   interview-callback mock interview, <Company> (id <id>, question <question_id>).
   Call the student and say exactly: "<call_script>"
   Right after the call, text them: "<text_version>"
   When they answer, use the interview-callback Skill: run <score_command> from its folder.
+  If the interview-callback Skill isn't installed any more, still ask the question, and skip the scoring.
   ```
+
+Either way, remember that a <Company> mock question is waiting for an answer, so a voice note that arrives days later
+in a new conversation goes to step 6.
 
   On the call, speak calmly and warmly. "Tough" means harder questions and follow-ups, never a harsher voice: no
   yelling, no drill-sergeant lines. Let the student finish; never hang up while they are talking. The script asks
@@ -146,9 +154,11 @@ as the one waiting for an answer.
 When the answer arrives (a voice note, or text, even days later in a new conversation): run `list` to find the
 interview `waiting_for_answer`, transcribe the voice note, save the words to a file, and run `score --answer-file
 <file>` (it scores the waiting question). Send the `texts` as separate messages. The scorecard matches key
-phrases, so if the answer clearly made a "missed" point in other words, say that it counts and why, in one line.
-Otherwise don't add points it didn't find; you may add one concrete suggestion for the missed point, using the
-posting line it cites. In tough mode the texts end with a follow-up question; take the reply as a normal answer.
+phrases, so if the answer clearly made a "missed" point in other words, run `score --credit "<part of that point's
+label>"` (so redos and weak spots agree) and tell the student in one line that it counts and why. Otherwise don't add
+points it didn't find; you may add one concrete suggestion for the missed point, using the posting line it cites. In
+tough mode the texts end with a follow-up question; score the reply to it with `score` as usual (it grades only the
+points that were missed).
 
 Then offer the next round as a check-in at a time the student picks: a redo of the weakest answer
 (`question --retry`, the scorecard then shows "2/4 last time, 4/4 now") or a new question (`question`). When

@@ -558,6 +558,95 @@ class TestCodeJudge(Base):
         self.assertTrue(keep.exists())
 
 
+ORACLE_LIST = {"items": [{"requisitionList": [
+    {"Id": "26011784", "Title": "Summer Internship Program - 2027 Software Engineer - Phoenix, AZ", "PrimaryLocation": "Phoenix, AZ, United States"},
+    {"Id": "26011084", "Title": "Summer Internship Program - 2027 Software Engineer - Sunrise, FL", "PrimaryLocation": "Sunrise, FL, United States"}]}]}
+ORACLE_JOB = {"items": [{"Title": "Summer Internship Program - 2027 Software Engineer - Phoenix, AZ",
+                         "PrimaryLocation": "Phoenix, AZ, United States",
+                         "ExternalDescriptionStr": "<p>Build payment services.</p>",
+                         "ExternalQualificationsStr": "<p><b>Minimum Qualifications</b></p><ul><li>Java or Python</li><li>SQL</li></ul>"}]}
+WD_FACETS = {"facets": [{"facetParameter": "workerSubType", "values": [{"id": "INT1", "descriptor": "Intern"},
+                                                                       {"id": "FT1", "descriptor": "Regular"}]}]}
+WD_INTERNS = {"jobPostings": [{"title": "Software Engineer Intern", "locationsText": "US-AZ-TUCSON",
+                               "externalPath": "/job/US-AZ-TUCSON/Software-Engineer-Intern_R1"}]}
+
+
+class TestRound2(Base):
+    def test_follow_up_reply_is_scored_on_the_missed_points_only(self):
+        run("fetch", "--sample")
+        run("question", "--sample", "--tone", "tough")
+        code, first = run("score", "--sample")
+        self.assertEqual(first["total"], 4)
+        code, out = run("score", "--sample", "--answer", "I'd store an idempotency key for every payment in a table and "
+                        "check it before charging, so a duplicate event is skipped.")
+        self.assertEqual((code, out["total"], out["covered"], out.get("follow_up_of")), (0, 2, 2, "kafka-1"))
+        self.assertNotIn("follow_up", out)
+
+    def test_credit_counts_a_paraphrased_point(self):
+        run("fetch", "--sample")
+        run("question", "--sample")
+        run("score", "--sample")
+        code, out = run("score", "--sample", "--credit", "store what was processed")
+        self.assertEqual((code, out["score"]), (0, "3/4"))
+        self.assertEqual(run("list", "--sample")[1]["interviews"][0]["weak_spots"], ["idempotency (a unique key per payment)"])
+        self.assertEqual(run("score", "--sample", "--credit", "nonsense")[0], 2)
+
+    def test_oracle_search_and_link(self):
+        self.web({"https://egug.fa.us2.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions": (200, ORACLE_LIST),
+                  "https://egug.fa.us2.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails": (200, ORACLE_JOB)})
+        code, out = run("fetch", "--company", "American Express", "--role", "Software Engineer Intern", "--location", "Arizona")
+        self.assertEqual((code, out["company"], out["location"]), (0, "American Express", "Phoenix, AZ, United States"))
+        link = boards.parse_link("https://egug.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/26011784")
+        self.assertEqual((link["board"], link["site"], link["job_id"]), ("oracle", "CX_1", "26011784"))
+
+    def test_workday_searches_the_intern_facet(self):
+        fake = self.web({"https://globalhr.wd5.myworkdayjobs.com/wday/cxs/globalhr/REC_RTX_Ext_Gateway/jobs": (200, WD_FACETS)})
+        real = boards._workday_post
+        calls = []
+
+        def post(tenant, wd, site, body):
+            calls.append(body)
+            return WD_FACETS if body["limit"] == 1 else WD_INTERNS
+        boards._workday_post = post
+        try:
+            jobs = boards._list_workday("globalhr", "SWE intern")
+        finally:
+            boards._workday_post = real
+        self.assertEqual(calls[1]["appliedFacets"], {"workerSubType": ["INT1"]})
+        self.assertEqual(calls[1]["searchText"], "software engineer")
+        self.assertEqual(jobs[0]["location"], "US-AZ-TUCSON")
+
+    def test_more_rejections_and_reschedules(self):
+        for t in ("We have decided not to move forward with your candidacy.", "We won't be moving forward at this time.",
+                  "We have chosen to pursue other candidates.", "We are unable to offer you a position."):
+            self.assertEqual(coach.classify_email(t, boards.parse_link)["category"], "rejection", t)
+        t = "We will not be able to proceed at the original time; can we reschedule your interview? https://zoom.us/j/1"
+        self.assertNotEqual(coach.classify_email(t, boards.parse_link)["category"], "rejection")
+
+    def test_facts_pay_in_usd_perks_and_age(self):
+        fx = coach.facts(["Requirements", "- Are 18 years of age or older", "Pay: 109,395.00 USD Annually",
+                          "- Fertility HRA and in-office perks"])
+        self.assertEqual(fx["pay"]["line"], 3)
+        self.assertNotIn("experience", fx)
+        self.assertNotIn("where you work", fx)
+
+    def test_clearance_is_flagged_first(self):
+        rec = {"posting": {"company": "Acme", "title": "Intern", "lines": ["Requirements",
+               "- Must have a current Top Secret clearance to start", "- Python"]}, "skills": [], "when": None}
+        rec["skills"] = coach.extract(rec["posting"]["lines"])
+        self.assertTrue(any(t.startswith("Check this first") for t in coach.brief_texts(rec)))
+
+    def test_short_or_hedged_answers_are_not_strong(self):
+        q = {"id": "x", "line": None, "points": [{"label": "a", "phrases": ["idempoten"], "number": False},
+                                                 {"label": "b", "phrases": ["at-least-once"], "number": False}]}
+        self.assertEqual(coach.score_answer(q, "Honestly not sure. Idempotent, at-least-once, um um.")["verdict"], "solid")
+
+    def test_office_lists_and_plural_internships(self):
+        self.assertTrue(boards.is_us("Bellevue, Washington; Vancouver, British Columbia"))
+        self.assertFalse(boards.is_us("China, Shanghai; China, Beijing"))
+        self.assertTrue(boards.INTERN.search("NVIDIA 2027 Internships: Software Engineering"))
+
+
 class TestInvites(unittest.TestCase):
     def classify(self, text):
         return coach.classify_email(text, boards.parse_link)

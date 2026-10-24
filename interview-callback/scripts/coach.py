@@ -64,7 +64,9 @@ BOILERPLATE = re.compile(r"(equal (employment )?opportunit|without regard to|reg
                          r"gender identity|sexual orientation|national origin|protected veteran|veteran status|"
                          r"disabilit(y|ies)|reasonable accommodation|e-?verify|pay transparency|benefits (include|package)|"
                          r"401\(k\)|paid time off|medical, dental|background check|drug (test|screen)|"
-                         r"applicants (will|must|are)|we are committed to|affirmative action|privacy (notice|policy))", re.I)
+                         r"applicants (will|must|are)|we are committed to|affirmative action|privacy (notice|policy)|"
+                         r"accommodation|paid (?:time off|holidays|sick)|sick (?:leave|time)|\bpto\b|vacation days|"
+                         r"parental leave)", re.I)
 INLINE_NICE = re.compile(r"\b(preferred|a plus|is a plus|are a plus|nice to have|bonus|ideally|not required)\b", re.I)
 
 
@@ -175,17 +177,33 @@ def _names(terms, cap=4):
 
 FACTS = [
     ("pay", re.compile(r"\$\s?\d[\d,.]*\s*(k\b)?\s*(/\s?h(ou)?r|per hour|an hour|hourly|/\s?(yr|year)|per year|a year|"
-                       r"annually|usd|-\s?\$|to \$)|(pay|salary|compensation|hourly rate|base)[^.]{0,40}\$\s?\d", re.I)),
-    ("graduation", re.compile(r"(graduat\w*|class of|degree by|enrolled)[^.]{0,80}?(20\d\d)|(20\d\d)[^.]{0,40}graduat", re.I)),
-    ("experience", re.compile(r"\b\d+\+?\s*(years?|yrs)\b(?! old)", re.I)),
+                       r"annually|usd|-\s?\$|to \$)|(pay|salary|compensation|hourly rate|base)[^.]{0,40}\$\s?\d|"
+                       r"\b\d{2,3}(?:,\d{3})+(?:\.\d+)?\s*USD\b", re.I)),
+    ("graduation", re.compile(r"(graduat\w*|conferral|class of|degree by|enrolled)[^.]{0,80}?(20\d\d)|(20\d\d)[^.]{0,40}graduat",
+                             re.I)),
+    ("experience", re.compile(r"\b\d+\+?\s*(years?|yrs)\b(?!\s*(?:old|of age))", re.I)),
     ("work authorization", re.compile(r"(sponsorship|work authori[sz]ation|authori[sz]ed to work|work visa|"
                                       r"visa sponsorship|\b(?-i:CPT|OPT)\b|u\.?s\.? citizen|citizenship|"
                                       r"security clearance|\bitar\b|export control)", re.I)),
-    ("interview process", re.compile(r"(interview|assessment|hackerrank|codesignal|take[- ]home|coding challenge)", re.I)),
+    ("interview process", re.compile(r"(interview (?:process|rounds?|loop|stages?)|\b\d+ rounds?\b|hackerrank|codesignal|"
+                                     r"take[- ]home|coding challenge|online assessment)", re.I)),
     ("where you work", re.compile(r"(in[- ]office|hybrid|remote|on[- ]?site|days a week|relocat)", re.I)),
     ("start date", re.compile(r"(summer|fall|spring|winter) (of )?20\d\d|start date|\b\d{1,2}[- ]weeks?\b|weeks? long|"
                               r"starting (in|on)", re.I)),
 ]
+
+GATES = re.compile(r"(top secret|ts/sci|secret clearance|security clearance|u\.?s\.? citizenship (?:is )?required|"
+                   r"must be a u\.?s\.? citizen|active clearance|polygraph)", re.I)
+
+
+def gates(lines):
+    """Eligibility requirements a student must know before prepping (clearance, citizenship)."""
+    for i, line in enumerate(lines, start=1):
+        m = GATES.search(line)
+        if m:
+            return {"line": i, "quote": quote(line, m.start())}
+    return None
+
 
 ASK_RECRUITER = {
     "interview process": "What the interview looks like (rounds, coding or behavioral, who you'll meet)",
@@ -195,12 +213,17 @@ ASK_RECRUITER = {
 }
 
 
+PERKS = re.compile(r"(\bhra\b|fertility|stipend|reimburs|401|perks?\b|discount|wellness|gym|commuter|\bpto\b|"
+                   r"time off|holiday|vacation|sick)", re.I)
+
+
 def facts(lines):
     secs = sections(lines)
     out = {}
     for name, rx in FACTS:
         for i, (line, sec) in enumerate(zip(lines, secs), start=1):
-            if sec == "heading":
+            if sec == "heading" or (sec in ("legal", "about") and name not in ("pay", "where you work")) or \
+                    (name in ("pay", "where you work", "start date") and PERKS.search(line)):
                 continue
             m = rx.search(line)
             if m:
@@ -219,18 +242,19 @@ those very what when will with your yours ours role team teams join help where w
 builds uses using accept sends owns moves helps provides offers powers enables small dollar dollars million
 billion leading global largest best mission across experience experiences assistance hours gender opportunity
 opportunities candidates candidate applicants employees employer position positions including include provide
-qualified ability status location locations""".split())
+qualified ability status location locations benefits salary salaries relocation range ranges shape right pay
+compensation bonus equity health insurance eligible offer offers""".split())
 
 
 def posting_keywords(lines, company, limit=6):
     """Distinctive words from the intro and about-the-company lines, for "something specific about us"."""
     secs = sections(lines)
-    picked = [l for l, s in zip(lines, secs) if s in ("intro", "about")][:12] or \
-        [l for l, s in zip(lines, secs) if s != "legal"][:8]
+    picked = [l for l, s in zip(lines, secs) if s in ("intro", "about") and not PERKS.search(l)
+              and not FACTS[0][1].search(l)][:12] or [l for l, s in zip(lines, secs) if s != "legal"][:8]
     skip = {w.lower() for w in re.findall(r"[A-Za-z]+", company or "")}
     words = [w for w in re.findall(r"[a-z][a-z-]{4,}", " ".join(picked).lower())
              if w not in STOP and w not in skip and not w.endswith("ly")]
-    return [w for w, _ in Counter(words).most_common(limit)]
+    return [w for w, n in Counter(words).most_common(limit) if n >= 2]
 
 
 # ---------------------------------------------------------------- brief
@@ -249,6 +273,9 @@ def brief_markdown(rec, top_n=5):
     md.append(f"Posting: {p['source_url'] or 'pasted by the student'} (read {p['fetched_at'][:10]} from {p['board']})")
     if rec.get("closed_at"):
         md.append(f"Note: the posting was closed on {rec['closed_at'][:10]}; this brief uses the copy saved earlier.")
+    gate = gates(p["lines"])
+    if gate:
+        md += ["", f"Check first: \"{gate['quote']}\" (line {gate['line']})"]
     md += ["", "Every point below cites a numbered line of the posting (full text at the end).", "",
            "## What they ask for most", ""]
     if groups:
@@ -272,6 +299,7 @@ def brief_markdown(rec, top_n=5):
     for n, q in enumerate(plan_questions(rec)[:4], 1):
         md.append(f"{n}. {q['question']}" + (f" (because of line {q['line']})" if q.get("line") else ""))
     keywords = rec.get("keywords") or []
+    lead = [s for s in lead if s["cat"] != "soft"] or lead
     md += ["", "## A 30-second pitch outline", ""]
     md.append(f"- Who you are, plus one project that shows {lead[0]['term'] if lead else 'what the role needs'}")
     if len(lead) > 1:
@@ -295,6 +323,11 @@ def brief_texts(rec):
     texts = [first, f"Top of their list: {_names(top['terms'], 3)}. In their words: \"{quote(top['quote'], None, 90)}\""]
     if len(groups) > 1:
         texts.append("Then " + "; ".join(_names(g["terms"], 3) for g in groups[1:]) + ".")
+    if len([s for s in rec["skills"] if s["kind"] != "nice"]) < 3:
+        texts.append("Heads up: this posting names very few specific skills, so prep your projects and the why-us story.")
+    gate = gates(p["lines"])
+    if gate:
+        texts.append(f"Check this first: \"{quote(gate['quote'], None, 110)}\" (line {gate['line']})")
     texts.append("The brief quotes the posting for every point, with line numbers so you can check it.")
     return texts
 
@@ -481,9 +514,14 @@ def score_answer(question, answer):
     total = len(results) or 1
     ratio = covered / total
     verdict = "strong" if ratio >= 0.75 else "solid" if ratio >= 0.5 else "needs work"
+    hedged = bool(re.search(r"\b(not sure|no idea|i don't know|i guess|maybe)\b", text))
+    if verdict == "strong" and (len(re.findall(r"[a-z0-9']+", text)) < 50 or hedged):
+        verdict = "solid"  # key words alone, or a hedge, aren't a strong answer
     tips = []
     if len(words) < 40:
         tips.append("Too short. Aim for about a minute, around 120 to 180 words.")
+    if re.search(r"\b(not sure|no idea|i guess)\b", text):
+        tips.append("Drop the hedging (\"not sure\", \"I guess\"); say what you'd do and why.")
     elif len(words) > 320:
         tips.append("Long. Tighten it to about 90 seconds.")
     if we_count >= 4 and we_count > 2 * max(i_count, 1):
@@ -503,9 +541,11 @@ def score_answer(question, answer):
 # ---------------------------------------------------------------- invite emails
 
 REJECT = re.compile(r"(we (?:will|are|have) (?:not|decided not)[^.]{0,30}(?:moving forward|proceed|pursue)|"
-                    r"not (?:be )?moving forward with your|decided to (?:pursue|move forward with) other "
-                    r"(?:candidates|applicants)|position has been filled|we regret to inform|not been selected|"
-                    r"were not selected|will not be (?:moving|proceeding))", re.I)
+                    r"decided not to (?:move|proceed)|(?:won'?t|will not|are not) (?:be )?(?:moving forward|proceeding|"
+                    r"extending)|not (?:be )?moving forward with your|(?:decided|chosen) to (?:pursue|move forward with) "
+                    r"other|unable to offer|extending an offer|position has been filled|we regret to inform|"
+                    r"not been selected|were not selected)", re.I)
+RESCHEDULE = re.compile(r"(reschedul|original time|move your interview|new time|different time)", re.I)
 ASSESS = re.compile(r"(online assessment|coding assessment|hackerrank|codesignal|codility|hirevue|take[- ]home|"
                     r"technical assessment|\bOA\b)", re.I)
 SCHEDULE = re.compile(r"(calendly\.com|goodtime\.io|schedul(e|ing) (link|your|an interview|a time)|select (a|your) time|"
@@ -523,7 +563,7 @@ NOT_COMPANY = {"gmail", "outlook", "hotmail", "yahoo", "icloud", "greenhouse", "
 def classify_email(text, parse_link):
     """Is this an interview invite, a request to schedule, an assessment, a rejection, or something else?"""
     signals = []
-    if REJECT.search(text):
+    if REJECT.search(text) and not RESCHEDULE.search(text):
         category = "rejection"
         signals.append("rejection wording")
     elif ASSESS.search(text) and not CONFIRMED.search(text):

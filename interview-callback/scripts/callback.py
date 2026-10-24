@@ -202,7 +202,8 @@ NEXT = {
 
 
 def _ambiguous(company, role, cands, location=None):
-    shown = boards.order_for_student(cands, location)[:6]
+    us = [c for c in cands if boards.is_us(c.get("location"))]
+    shown = boards.order_for_student(us or cands, location)[:6]
     return Stop("ambiguous", f"several {company} postings could match '{role}'", NEXT["ambiguous"],
                 candidates=[{"n": i + 1, "title": c["title"], "location": c.get("location"), "url": c["url"],
                              "match": c["score"]} for i, c in enumerate(shown)])
@@ -347,6 +348,7 @@ def cmd_question(a, sd):
         rec["asked"].append(q["id"])
     rec.setdefault("questions", {})[q["id"]] = {k: q[k] for k in ("id", "question", "term", "line", "quote", "points")}
     rec["pending_question"] = q["id"]
+    rec.pop("follow_up", None)  # a new question (or a redo) replaces any open follow-up
     rec["tone"] = tone
     save(sd, rec)
     out = {"ok": True, "id": rec["id"], "question_id": q["id"], "question": q["question"], "term": q["term"],
@@ -366,7 +368,13 @@ def cmd_score(a, sd):
     qid = a.question_id or rec.get("pending_question") or rec.get("last_question")
     q = (rec.get("questions") or {}).get(qid or "")
     if not q:
-        raise Stop("bad_input", "no question has been asked yet", "Run question first.")
+        raise Stop("bad_input", "no question is waiting for an answer",
+                   "Run question first, or pass --question-id (list shows the interview's questions).")
+    if a.credit:
+        return _credit(sd, rec, qid, a.credit)
+    follow = rec.get("follow_up") if not a.question_id or a.question_id == (rec.get("follow_up") or {}).get("question_id") else None
+    if follow and follow.get("question_id") == qid:
+        q = dict(q, points=[p for p in q["points"] if p["label"] in follow["points"]])
     if a.answer_file:
         answer = read_file(a.answer_file, "answer")
     elif a.answer:
@@ -377,12 +385,16 @@ def cmd_score(a, sd):
         raise Stop("bad_input", "give --answer-file or --answer", "Transcribe the voice note to a file and pass it.")
     if len(answer.split()) < 5:
         raise Stop("bad_input", "the answer is only a few words", "Ask the student to answer again in a voice note.")
-    before = _best_scores(rec).get(qid)
+    before = None if follow else _best_scores(rec).get(qid)
     result = coach.score_answer(q, answer)
+    if follow:
+        result["tips"] = []
+        result["follow_up_of"] = qid
     rec.setdefault("scores", []).append({"at": now(), "question_id": qid, "covered": result["covered"],
                                          "total": result["total"], "verdict": result["verdict"], "missed": result["missed"]})
     rec.pop("pending_question", None)
-    save(sd, rec)
+    rec.pop("follow_up", None)
+    rec["last_question"] = qid
     head = f"{result['covered']}/{result['total']} key points: {result['verdict']}."
     if before:
         head = f"{before['covered']}/{before['total']} last time, {result['covered']}/{result['total']} now: {result['verdict']}."
@@ -400,14 +412,38 @@ def cmd_score(a, sd):
         else:
             cite = ""
         texts.append("Missed: " + "; ".join(result["missed"]) + "." + cite)
-        if rec.get("tone") == "tough":
+        if rec.get("tone") == "tough" and not follow:
             result["follow_up"] = f"Follow-up: you didn't cover {result['missed'][0]}. How would you handle that here?"
             texts.append(result["follow_up"])
+            rec["follow_up"] = {"question_id": qid, "points": result["missed"]}
+            rec["pending_question"] = qid
+    save(sd, rec)
     texts += result["tips"][:2]
     result.update({"ok": True, "id": rec["id"], "texts": texts,
                    "next": "Send the texts one by one. Then offer a redo of this question (question --retry) or the "
                            "next one (question), each as a scheduled check-in at a time the student picks."})
     return result
+
+
+def _credit(sd, rec, qid, label):
+    """Cubbie judged that the answer made a point in other words: record it, so redos and weak spots agree."""
+    last = next((s for s in reversed(rec.get("scores", [])) if s["question_id"] == qid), None)
+    match = next((m for m in (last or {}).get("missed", []) if label.lower() in m.lower()), None)
+    if not match:
+        raise Stop("bad_input", f"'{label}' isn't a missed point of the last answer to {qid}",
+                   "Pass part of a missed point's label exactly as score printed it.")
+    last["missed"].remove(match)
+    last["covered"] += 1
+    last["credited"] = last.get("credited", []) + [match]
+    last["verdict"] = "strong" if last["covered"] / last["total"] >= 0.75 else "solid" if last["covered"] / last["total"] >= 0.5 else "needs work"
+    if rec.get("follow_up", {}).get("question_id") == qid:
+        rec["follow_up"]["points"] = [p for p in rec["follow_up"]["points"] if p != match]
+        if not rec["follow_up"]["points"]:
+            rec.pop("follow_up")
+            rec.pop("pending_question", None)
+    save(sd, rec)
+    return {"ok": True, "id": rec["id"], "question_id": qid, "credited": match,
+            "score": f"{last['covered']}/{last['total']}", "next": "Tell the student in one line that the point counts."}
 
 
 def cmd_invite(a, sd):
@@ -440,6 +476,9 @@ def cmd_forget(a, sd):
         for f in files:
             f.unlink()
         n = sum(1 for f in files if f.suffix == ".json")
+        if not a.sample:
+            for f in list((sd / "sample" / "interviews").glob("*.json")) + list((sd / "sample" / "briefs").glob("*.md")):
+                f.unlink()
         return {"ok": True, "deleted": f"all saved interviews ({n})"}
     if not a.id:
         raise Stop("bad_input", "forget needs --id or --all",
@@ -483,6 +522,7 @@ def main(argv=None):
     s.add_argument("--answer-file")
     s.add_argument("--answer")
     s.add_argument("--question-id")
+    s.add_argument("--credit", help="count a missed point the answer made in other words (part of its label)")
     i = sub.add_parser("invite", parents=[common])
     i.add_argument("--email-file")
     sub.add_parser("list", parents=[common])
