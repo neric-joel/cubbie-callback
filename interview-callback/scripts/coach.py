@@ -4,10 +4,13 @@ Everything here is deterministic: Cubbie phrases the results, but every skill, f
 posting line or to a phrase in the student's answer.
 """
 
+from __future__ import annotations
+
 import json
 import re
 from collections import Counter
 from pathlib import Path
+from typing import Callable
 
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
 
@@ -17,7 +20,7 @@ _TERMS = None
 _QUESTIONS = None
 
 
-def terms():
+def terms() -> list[dict]:
     global _TERMS
     if _TERMS is None:
         _TERMS = json.loads((ASSETS / "terms.json").read_text(encoding="utf-8"))["terms"]
@@ -31,35 +34,50 @@ def terms():
     return _TERMS
 
 
-def questions():
+def questions() -> dict:
     global _QUESTIONS
     if _QUESTIONS is None:
         _QUESTIONS = json.loads((ASSETS / "questions.json").read_text(encoding="utf-8"))
     return _QUESTIONS
 
 
-def term_info(name):
+def term_info(name: str) -> dict | None:
     return next((t for t in terms() if t["term"] == name), None)
 
 
-def slug(text, n=40):
-    return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")[:n].strip("-") or "x"
+def slug(text: str | None, n: int = 40) -> str:
+    text = (text or "").lower().replace("+", " plus ").replace("#", " sharp ")  # C, C++ and C# stay distinct
+    return re.sub(r"[^a-z0-9]+", "-", text).strip("-")[:n].strip("-") or "x"
+
+
+SPOKEN = re.compile(r"[A-Za-z0-9][\w'&.]*(?: (?:of|and|the|for|&|[A-Z0-9][\w'&.]*)){0,4}")
+
+
+def spoken_company(name: str | None) -> str:
+    """The company as Cubbie may say it on a call: a plain name ("Bank of America", "J.P. Morgan"), else "the company"."""
+    name = re.sub(r"\s+", " ", name or "").strip()
+    return name if len(name) <= 40 and SPOKEN.fullmatch(name) else "the company"
 
 
 # ---------------------------------------------------------------- sections of a posting
 
-NICE_HDR = re.compile(r"(prefer|nice[- ]to[- ]have|bonus|\bplus\b|desired|extra credit|not required|good to have)")
+NICE_HDR = re.compile(r"(prefer|nice[- ]to[- ]have|bonus|\bplus\b|desired|extra credit|not required|good to have|"
+                      r"even better|better if|stand out)")
 MUST_HDR = re.compile(r"(requirement|qualification|must[- ]have|you have|you'?ll need|you will need|what you need|"
                       r"looking for|what we look for|who you are|about you|minimum|basic|required|skills|"
-                      r"you bring|you'?ll bring|ideal candidate|you might be a fit|you may be a fit|\brequire\b)")
-ROLE_HDR = re.compile(r"(responsib|what you'?ll do|what you will do|the role|the job|about the (team|role|job|position)|"
+                      r"you bring|you'?ll bring|ideal candidate|you might be a fit|you may be a fit|\brequire\b|"
+                      r"our person if|you'?re our person)")
+ROLE_HDR = re.compile(r"(responsib|what you'?ll (?:actually )?(?:do|be doing)|what you will do|the role|the job|"
+                      r"about the (team|role|job|position)|"
                       r"your impact|day[- ]to[- ]day|in this role|you will|the opportunity|what you'?ll work on|"
                       r"job description|^description|overview|summary|the team|projects|"
                       r"about (the|this) (role|internship|program|position|job))")
 ABOUT_HDR = re.compile(r"(^about (?!(the|this) (role|team|job|position|opportunity|internship|program|intern|co-?op))|who we are|^our (mission|story|company|values|culture)|"
                        r"benefits|perks|^pay\b|pay and benefits|compensation|salary|equal (employment )?opportunity|eeo|"
                        r"diversity|accommodation|our commitment|why join|life at|office expectations|hybrid work|"
-                       r"privacy|disclaimer|^job details)")
+                       r"privacy|disclaimer|what we offer|apply now|unleash your)")
+# Workday's header block (Date Posted:, Country:, Security Clearance Type:) is metadata, not a requirements list
+META_HDR = re.compile(r"(date posted|^country|^location|role type|citizen|clearance|immigration|relocation eligib)")
 BOILERPLATE = re.compile(r"(equal (employment )?opportunit|without regard to|regardless of|race, (color|religion)|"
                          r"gender identity|sexual orientation|national origin|protected veteran|veteran status|"
                          r"disabilit(y|ies)|reasonable accommodation|e-?verify|pay transparency|benefits (include|package)|"
@@ -67,19 +85,25 @@ BOILERPLATE = re.compile(r"(equal (employment )?opportunit|without regard to|reg
                          r"applicants (will|must|are)|we are committed to|affirmative action|privacy (notice|policy)|"
                          r"accommodation|paid (?:time off|holidays|sick)|sick (?:leave|time)|\bpto\b|vacation days|"
                          r"parental leave)", re.I)
+PITCH = re.compile(r"^(?:what if|imagine|whether you|are you ready|ready to|we invite you|bring your|shape the future|"
+                   r"at [A-Z][\w&.-]*(?: [A-Z][\w&.-]*){0,2}, (?:you|we|our)|from [^,]{3,80} to [^,]{3,80}, you)|[?!]$", re.I)
 INLINE_NICE = re.compile(r"\b(preferred|a plus|is a plus|are a plus|nice to have|bonus|ideally|not required)\b", re.I)
 
 
-def classify_heading(line):
+def classify_heading(line: str) -> str | None:
     """Section for a heading line, or None when the line is ordinary content."""
     if ":" in line and line.split(":", 1)[1].strip():
         return None
+    if line.rstrip().endswith(("...", "\u2026")) and len(line.split()) <= 6:
+        line = line.rstrip().rstrip(".\u2026 ") + ":"  # "You're Our Person If..." is a heading
     text = line.strip().rstrip(":").strip().lower()
     if line.startswith("- ") or len(text) > 70 or (text.endswith(".") and not line.endswith(":")):
         return None
     if not line.endswith(":") and (len(text.split()) > 5 or any(
             t["_re"].search(line if "regex" in t else text) for t in terms())):
         return None  # "You will build APIs in Python" is content, not a heading
+    if META_HDR.search(text):
+        return "keep"
     for name, rx in (("about", ABOUT_HDR), ("nice", NICE_HDR), ("must", MUST_HDR), ("role", ROLE_HDR)):
         if rx.search(text):
             return name
@@ -89,7 +113,7 @@ def classify_heading(line):
 _SECTIONS = {}
 
 
-def sections(lines):
+def sections(lines: list[str]) -> list[str]:
     """Section of each line: intro, about, role, must or nice. Heading lines are tagged 'heading'. Cached."""
     key = (id(lines), len(lines))
     if key in _SECTIONS and _SECTIONS[key][0] is lines:
@@ -110,12 +134,14 @@ def _sections(lines):
             out.append("heading")
         elif BOILERPLATE.search(line):
             out.append("legal")
+        elif current in ("role", "must") and PITCH.search(line):
+            out.append("intro")  # a recruiting pitch inside the job description isn't a duty or a requirement
         else:
             out.append("nice" if current in ("must", "role", "intro") and INLINE_NICE.search(line) else current)
     return out
 
 
-def quote(line, match_start=None, limit=140):
+def quote(line: str, match_start: int | None = None, limit: int = 140) -> str:
     """The line, or a window of it around the match, cut at word boundaries."""
     if line.startswith("- "):
         line = line[2:]
@@ -139,9 +165,10 @@ WEIGHT = {"must": 3, "role": 2, "intro": 1, "nice": 1}
 KIND_ORDER = {"must": 0, "role": 1, "intro": 2, "nice": 3}
 
 
-def extract(lines):
+def extract(lines: list[str], company: str | None = None) -> list[dict]:
     """Skills the posting asks for, strongest first, each with the lines it appears on."""
     secs = sections(lines)
+    own = {w for w in re.findall(r"[a-z0-9]+", (company or "").lower()) if len(w) > 2}
     found = {}
     for i, (line, sec) in enumerate(zip(lines, secs), start=1):
         if sec in ("about", "heading", "legal"):
@@ -149,7 +176,7 @@ def extract(lines):
         low = line.lower()
         for t in terms():
             m = t["_re"].search(line if "regex" in t else low)
-            if not m or (t["_not"] and t["_not"].search(line)):
+            if not m or (t["_not"] and t["_not"].search(line)) or m.group(0).lower() in own:
                 continue
             f = found.setdefault(t["term"], {"term": t["term"], "cat": t["cat"], "score": 0, "lines": [], "kinds": set()})
             f["score"] += WEIGHT[sec]
@@ -167,7 +194,7 @@ def extract(lines):
     return result
 
 
-def grouped(skills, limit=5):
+def grouped(skills: list[dict], limit: int = 5) -> list[dict]:
     """Skills that share their best line and kind, merged: 'Java, Go, Ruby (line 31)' instead of three entries."""
     groups = []
     for s in skills:
@@ -211,7 +238,7 @@ GATES = re.compile(r"(top secret|ts/sci|secret clearance|security clearance|u\.?
                    r"does not|do not) (?:provide )?sponsor)", re.I)
 
 
-def gates(lines):
+def gates(lines: list[str]) -> dict | None:
     """Eligibility requirements a student must know before prepping (clearance, citizenship)."""
     for i, line in enumerate(lines, start=1):
         m = GATES.search(line)
@@ -233,15 +260,20 @@ PERKS = re.compile(r"(\bhra\b|fertility|stipend|reimburs|401|perks?\b|discount|w
                    r"time off|holiday|vacation|sick)", re.I)
 
 
-def facts(lines):
+def facts(lines: list[str], prefer: Callable[[str], bool] | None = None) -> dict:
+    """Pay, location, dates and eligibility lines. `prefer(line)` picks the pay line for the student's place."""
     secs = sections(lines)
     out = {}
     for name, rx in FACTS:
-        for i, (line, sec) in enumerate(zip(lines, secs), start=1):
+        order = list(enumerate(zip(lines, secs), start=1))
+        if name == "pay" and prefer:
+            order.sort(key=lambda x: not prefer(x[1][0]))
+        for i, (line, sec) in order:
             in_text = name in ("pay", "where you work", "work authorization", "start date")
             if sec == "heading" or (sec in ("legal", "about") and not in_text) or \
                     (name in ("where you work", "start date") and PERKS.search(line)) or \
-                    (name == "pay" and PERKS.search(line) and not PAY_WORD.search(line)):
+                    (name == "pay" and PERKS.search(line) and not PAY_WORD.search(line)) or \
+                    (name == "start date" and re.search(r"clearance|citizen", line, re.I)):
                 continue
             m = rx.search(line)
             if m:
@@ -273,24 +305,55 @@ Remote Hybrid Onsite New Today Year Years Day Days Job Jobs Role Roles Position 
 Qualifications Requirements Responsibilities Experience Skills Ability""".split())
 
 
-def posting_keywords(lines, company, limit=6):
-    """Product, platform or team names from the posting (Foundry, AWS, Payments Core), for "something specific"."""
+NOT_NAMES = set("""LinkedIn YouTube Facebook Instagram Twitter Glassdoor Indeed TikTok FBI Strong Enrolled Category
+Start End Applications Discover Tech Specific Information Quality Unit Citizen Total Rewards World Changing Product
+Development Build Backend Infrastructure Operate Write Give Data Employer Work Manage Learn Hourly Fortune Modeling
+Space Plan Develop Participate Collaborate Debug Contribute Design Agile Services Computer Science USD SDE SWE FBI
+Technologies Alliance""".split())
+PLACE_WORDS = re.compile(r"\b(alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|"
+                         r"hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|"
+                         r"michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|"
+                         r"new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|"
+                         r"rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|"
+                         r"west virginia|wisconsin|wyoming|america|seattle|san francisco|bay area|chicago|austin|"
+                         r"phoenix|tempe|chandler|scottsdale|boston|los angeles|denver|atlanta|dallas|san jose|"
+                         r"mountain view|palo alto|redmond|portland|miami|hub|rd|bldg|street|ave)\b", re.I)
+SCAM = re.compile(r"scam|fraud|phishing|complaint|impersonat", re.I)
+ROLE_PLURAL = re.compile(r"(Managers|Strategists|Engineers|Designers|Scientists|Analysts|Recruiters|Leaders)$|"
+                         r"Privacy|Statement|Policy|Department|Adjudication|Equal|Accommodation|Benefit|Candidate|Alliance")
+
+
+def posting_keywords(lines: list[str], company: str | None, limit: int = 6, title: str = "") -> list[str]:
+    """Product, platform or team names from the posting (Foundry, Payments Core, MAGNet), for "something specific".
+
+    Only sentences about the company or the role count, not perks, pay or office lists. A name qualifies when the
+    posting repeats it, it has several capitalized words, or it is written like a product (FigJam, MAGNet).
+    """
     secs = sections(lines)
     picked = [l for l, s in zip(lines, secs) if s in ("intro", "about", "role") and not PERKS.search(l)
-              and not FACTS[0][1].search(l)][:40]
-    skip = {w.lower() for w in re.findall(r"[A-Za-z]+", company or "")}
-    names = []
+              and not FACTS[0][1].search(l) and len(l.split()) >= 7 and not SCAM.search(l)
+              and not (l.count(",") >= 4 and len(re.findall(r",\s*[A-Z]", l)) >= 3)][:30]
+    skip = {w.lower() for w in re.findall(r"[A-Za-z]+", f"{company or ''} {title or ''}")}
+    names = Counter()
     for line in picked:
-        for m in re.finditer(r"(?<![.!?]\s)(?<!^)\b([A-Z][A-Za-z0-9]+(?: [A-Z][A-Za-z0-9]+){0,2})", line):
-            words = [w for w in m.group(1).split() if w not in CAPS_STOP and w.lower() not in skip]
-            if words and len(" ".join(words)) > 2:
-                names.append(" ".join(words))
-    return [w for w, _ in Counter(names).most_common(limit)]
+        body = re.sub(r"^\W+\s*", "", line)  # the first word of a bullet is capitalized anyway
+        for m in re.finditer(r"(?<![.!?:]\s)(?<!^)(?<![\w-])([A-Z][A-Za-z0-9]+(?:[ -][A-Z][A-Za-z0-9]+){0,3})", body):
+            after = body[m.end():]
+            words = [w for w in re.split(r"[ -]", m.group(1)) if w not in CAPS_STOP and w.lower() not in skip]
+            name = " ".join(words)
+            if (not words or len(name) < 3 or name in NOT_NAMES or all(w in NOT_NAMES for w in words)
+                    or PLACE_WORDS.search(name) or ROLE_PLURAL.search(name) or re.match(r"\s*[,(]\s*[A-Z]{2}\b|!", after)
+                    or any(w.isupper() and len(w) > 4 for w in words)
+                    or any(t["_re"].search(name if "regex" in t else name.lower()) for t in terms())):
+                continue
+            names[name] += 1
+    good = [n for n, c in names.most_common() if c >= 2 or " " in n or re.search(r"[a-z][A-Z]", n)]
+    return good[:limit]
 
 
 # ---------------------------------------------------------------- brief
 
-def brief_markdown(rec, top_n=5):
+def brief_markdown(rec: dict, top_n: int = 5) -> str:
     p, skills, fx = rec["posting"], rec["skills"], rec["facts"]
     company, title = p["company"], p["title"]
     groups = grouped([s for s in skills if s["kind"] != "nice"], top_n)
@@ -341,29 +404,33 @@ def brief_markdown(rec, top_n=5):
     return "\n".join(md) + "\n"
 
 
-def brief_texts(rec):
+def brief_texts(rec: dict) -> list[str]:
     """The texts that go with the brief: what to expect, the top ask in the posting's own words, the rest."""
     p = rec["posting"]
-    first = (f"{p['company']} interview {rec['when']}. Your prep brief is ready." if rec.get("when")
-             else f"{p['company']}, {p['title']}: your prep brief is ready.")
+    company = spoken_company(p["company"])
+    first = (f"{company} interview {rec['when']}. Your prep brief is ready." if rec.get("when")
+             else f"{company}, {p['title']}: your prep brief is ready.")
     hard = [s for s in rec["skills"] if s["kind"] != "nice" and s["cat"] != "soft"]
     groups = grouped(hard or [s for s in rec["skills"] if s["kind"] != "nice"], 4)
     if not groups:
-        return [first, "The posting doesn't name specific tools, so we'll practice general questions."]
+        gate = gates(p["lines"])
+        check = [f"Check this first: \"{quote(gate['quote'], None, 110)}\" (line {gate['line']})"] if gate else []
+        return [first] + check + ["The posting doesn't name specific tools, so we'll practice general questions."]
     top = groups[0]
-    texts = [first, f"Top of their list: {_names(top['terms'], 3)}. In their words: \"{quote(top['quote'], None, 90)}\""]
+    texts = [first]
+    gate = gates(p["lines"])
+    if gate:
+        texts.append(f"Check this first: \"{quote(gate['quote'], None, 110)}\" (line {gate['line']})")
+    texts.append(f"Top of their list: {_names(top['terms'], 3)}. In their words: \"{quote(top['quote'], None, 90)}\"")
     if len(groups) > 1:
         texts.append("Then " + "; ".join(_names(g["terms"], 3) for g in groups[1:]) + ".")
     if len([s for s in rec["skills"] if s["kind"] != "nice"]) < 3:
         texts.append("Heads up: this posting names very few specific skills, so prep your projects and the why-us story.")
-    gate = gates(p["lines"])
-    if gate:
-        texts.append(f"Check this first: \"{quote(gate['quote'], None, 110)}\" (line {gate['line']})")
     texts.append("The brief quotes the posting for every point, with line numbers so you can check it.")
     return texts
 
 
-def headline(rec):
+def headline(rec: dict) -> str:
     hard = [s for s in rec["skills"] if s["kind"] != "nice" and s["cat"] != "soft"]
     groups = grouped(hard or [s for s in rec["skills"] if s["kind"] != "nice"], 3)
     if not groups:
@@ -426,9 +493,9 @@ def _cite(rec, cues):
     return None
 
 
-def plan_questions(rec):
+def plan_questions(rec: dict) -> list[dict]:
     """Every question available for this interview, in the order they should be asked."""
-    company = rec["posting"]["company"]
+    company = spoken_company(rec["posting"]["company"])
     bank = questions()
     tech, soft, projects = [], [], []
 
@@ -476,7 +543,8 @@ TONES = {
 }
 
 
-def next_question(rec, tone="chill", question_id=None, term=None):
+def next_question(rec: dict, tone: str = "chill", question_id: str | None = None,
+                  term: str | None = None) -> dict | None:
     plan = plan_questions(rec)
     asked = rec.get("asked", [])
     if question_id:
@@ -488,7 +556,7 @@ def next_question(rec, tone="chill", question_id=None, term=None):
     if pick is None:
         return None
     t = TONES.get(tone, TONES["chill"])
-    company = rec["posting"]["company"]
+    company = spoken_company(rec["posting"]["company"])
     why = f"The posting says \"{pick['quote']}\" (line {pick['line']})." if pick.get("line") else None
     pick = dict(pick, tone=tone, why=why)
     pick["call_script"] = " ".join([_fill(t["opener"], company), t["ask"].replace("{q}", pick["question"]), t["close"]])
@@ -500,6 +568,9 @@ def next_question(rec, tone="chill", question_id=None, term=None):
 
 FILLERS = ["um", "uh", "you know", "kind of", "sort of", "basically", "literally", "i mean"]
 COURSE_CODE = re.compile(r"\b[A-Z]{2,4} ?\d{3}[A-Z]?\b")
+NAMED_NUMBER = re.compile(r"\b(?:cse|cs|cis|eee|ece|ser|ift|mat|math|stat|phy|csc|csci|eecs|comp|info|ee|me)\s?\d{3}[a-z]?\b|"
+                          r"\b(?:python|oauth|html|css|http|ipv|windows|ios|android|java|php|vue|angular|swift|version|"
+                          r"web|es|v)\s?\d+(?:\.\d+)*\b", re.I)
 NUMBER = re.compile(r"(?<![a-z0-9])\d|\b(percent|half|twice|double|triple|hundred|thousand|million|dozen)\b")
 
 
@@ -514,21 +585,29 @@ def _phrase_re(p):
     return re.compile(rf"(?<![a-z0-9]){re.escape(p)}{tail}")
 
 
-NEGATION = re.compile(r"(don't|do not|didn't|did not|never|not sure|no idea|not familiar with|unfamiliar with|"
-                      r"no experience (?:with|in)|haven't|have not|not really)"
-                      r"(?: \w+){0,3} $")
+NEGATION = re.compile(r"\b(don't|do not|didn't|did not|never|not sure|no idea|not familiar with|unfamiliar with|"
+                      r"no experience (?:with|in)|haven't|have not|not really|wouldn't|would not|won't|will not|"
+                      r"don't think|no need|instead of|isn't|is not|aren't)"
+                      r"(?: [\w'-]+){0,6} $")
+CLAUSE = re.compile(r".*(?:[.,;:!?]|\b(?:but|because|so|although|though|then|which)\b)", re.S)
 
 
 def _said(phrase, text):
-    """True when the answer uses the phrase, not counting "I don't know X" or "never used X"."""
+    """True when the answer uses the phrase, not counting "I don't know X", "I wouldn't use X" or "instead of X"."""
     for m in _phrase_re(phrase).finditer(text):
-        if not NEGATION.search(text[max(0, m.start() - 40):m.start()]):
+        before = CLAUSE.sub("", text[max(0, m.start() - 70):m.start()])  # only the clause the phrase is in
+        if not NEGATION.search(" " + before):
             return True
     return False
 
 
-def score_answer(question, answer):
-    no_codes = " ".join(COURSE_CODE.sub(" ", answer or "").lower().split())  # "CSE 340" is a class, not a result
+def verdict_for(covered: int, total: int) -> str:
+    ratio = covered / (total or 1)
+    return "strong" if ratio >= 0.75 else "solid" if ratio > 0.5 else "needs work"
+
+
+def score_answer(question: dict, answer: str) -> dict:
+    no_codes = " ".join(NAMED_NUMBER.sub(" ", COURSE_CODE.sub(" ", answer or "")).lower().split())  # "CSE 340", "Python 3"
     text = " ".join((answer or "").lower().replace("’", "'").split())
     results = []
     for p in question["points"]:
@@ -542,12 +621,12 @@ def score_answer(question, answer):
     i_count = sum(1 for w in words if w in ("i", "i'm", "i've", "i'd", "my"))
     we_count = sum(1 for w in words if w in ("we", "we're", "we've", "our"))
     covered = sum(r["covered"] for r in results)
-    total = len(results) or 1
-    ratio = covered / total
-    verdict = "strong" if ratio >= 0.75 else "solid" if ratio >= 0.5 else "needs work"
+    verdict = verdict_for(covered, len(results))
     hedged = bool(re.search(r"\b(not sure|no idea|i don't know|i guess|maybe)\b", text))
-    if verdict == "strong" and (len(re.findall(r"[a-z0-9']+", text)) < 50 or hedged):
-        verdict = "solid"  # key words alone, or a hedge, aren't a strong answer
+    if verdict == "strong" and (len(words) < 50 or hedged):
+        verdict = "solid"  # a hedge, or barely a minute's worth, isn't a strong answer
+    if verdict != "needs work" and len(words) < 40:
+        verdict = "key words only"  # a list of the right words isn't an answer yet
     tips = []
     if len(words) < 40:
         tips.append("Too short. Aim for about a minute, around 120 to 180 words.")
@@ -575,10 +654,12 @@ REJECT = re.compile(r"(we (?:will|are|have) (?:not|decided not)[^.]{0,30}(?:movi
                     r"decided not to (?:move|proceed)|(?:won'?t|will not|are not) (?:be )?(?:moving forward|proceeding|"
                     r"extending)|not (?:be )?moving forward with your|(?:decided|chosen) to (?:pursue|move forward with) "
                     r"other|moving forward with (?:other|another) (?:candidates?|applicants?)|unable to offer|"
-                    r"extending an offer|filled the (?:role|position)|not able to move you forward|go with other "
+                    r"filled the (?:role|position)|not able to move you forward|go with other "
                     r"(?:candidates|applicants)|won'?t be able to invite you|go in a different direction|"
                     r"position has been filled|we regret to inform|"
                     r"not been selected|were not selected)", re.I)
+UNFORTUNATE = re.compile(r"\bunfortunately\b[^.!?\n]{0,160}?(?:\bnot\b|n't\b|\bunable\b|\bno longer\b|\bfilled\b|"
+                         r"\bother (?:candidates?|applicants?)\b|\banother candidate\b|\bclosed\b)", re.I)
 RESCHEDULE = re.compile(r"(reschedul|original time|move your interview|new time|different time)", re.I)
 ASSESS = re.compile(r"(online assessment|coding assessment|hackerrank|codesignal|codility|hirevue|take[- ]home|"
                     r"technical assessment|\bOA\b)", re.I)
@@ -594,10 +675,10 @@ NOT_COMPANY = {"gmail", "outlook", "hotmail", "yahoo", "icloud", "greenhouse", "
                "joinhandshake", "linkedin", "indeed", "asu", "edu", "mail", "notifications", "us"}
 
 
-def classify_email(text, parse_link):
+def classify_email(text: str, parse_link: Callable[[str], dict]) -> dict:
     """Is this an interview invite, a request to schedule, an assessment, a rejection, or something else?"""
     signals = []
-    if (REJECT.search(text) or (re.search(r"\bunfortunately\b", text, re.I) and not CONFIRMED.search(text)
+    if (REJECT.search(text) or (UNFORTUNATE.search(text) and not CONFIRMED.search(text)
                                 and not SCHEDULE.search(text))) and not RESCHEDULE.search(text):
         category = "rejection"
         signals.append("rejection wording")

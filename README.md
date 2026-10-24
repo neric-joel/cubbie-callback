@@ -94,11 +94,14 @@ A payment event gets delivered twice through a queue like Kafka. How do you make
 once? Give me one real example. When we hang up, send your answer as a voice note..."* The student answers, and:
 
 ```text
-2/4 key points: solid.
+2/4 key points: needs work.
 Covered: delivery guarantees; offsets, acks or retries.
 Missed: idempotency (a unique key per payment); store what was processed. The posting says "Make retries safe so a merchant is never charged twice when a message is delivered more than once." (line 7).
 Follow-up: you didn't cover idempotency (a unique key per payment). How would you handle that here?
 ```
+
+The student texts back, and the hint is credited on its own line, not into the score:
+`Follow-up: got it. That's 2/4 on your own, +1 after the hint. A redo without the hint is the real test.`
 
 The next evening, a redo: `2/4 last time, 4/4 now: strong.`
 
@@ -110,19 +113,21 @@ Live-checked on Oct 24 2026 by company name and role:
 
 | Company | Found | Source |
 | --- | --- | --- |
-| Amazon | Software Development Engineer Intern - Summer 2027 (USA), Seattle | amazon.jobs API |
+| Amazon | Software Development Engineer Intern - Summer 2027 (USA), with all its US offices | amazon.jobs API |
 | American Express | 2027 Software Engineer internship, Phoenix AZ | Oracle Recruiting |
 | State Farm | Summer 2027 Intern - MAGNet Program @ Arizona State University, Tempe | jobs.statefarm.com API |
 | RTX | Software Engineer Intern, Tucson AZ | Workday (intern filter) |
 | NVIDIA | NVIDIA 2027 Internships: Software Engineering, Santa Clara | Workday (intern filter) |
 | Salesforce | Summer 2027 Intern - Software Engineer, San Francisco and more | Workday |
-| Honeywell | Software Engineer Co-Op - Summer 2027 | Oracle Recruiting |
+| Intel | Software Engineering - Intern, Bachelor's (Phoenix among its offices), not the PhD one | Workday (intern filter) |
+| Honeywell | Software Engineer & Computer Science - Summer 2027 Intern (not the co-op) | Oracle Recruiting |
 | Microsoft, Northrop Grumman | asks which of the open software intern roles | Eightfold, Workday |
-| Lockheed Martin | Software Engineer - Intern, Marietta GA | Eightfold |
+| Lockheed Martin | Software Engineer Intern - Summer 2027, Huntsville AL (no Arizona posting, and it says so) | Eightfold |
 | Stripe, Palantir, Ramp, Databricks | the matching intern posting, US office | Greenhouse, Lever, Ashby |
 | Boeing, Carvana, Wells Fargo | says there's no open software intern posting right now, and shows the closest | Workday, Greenhouse |
+| JPMorgan | says there's no US software intern posting right now; shows Dublin, Singapore and London | Oracle Recruiting |
 
-Also searchable by name: Intel, PayPal, Capital One, Micron, Dexcom (Workday), JPMorgan (Oracle), and any company on
+Also searchable by name: PayPal, Capital One, Micron, Dexcom (Workday), and any company on
 Greenhouse, Lever, Ashby or SmartRecruiters. Any job link works if the page publishes standard job data; for the
 rest (Google, Apple, Meta, Handshake) Cubbie reads the page or a screenshot and passes the text in.
 
@@ -141,7 +146,7 @@ callback.py fetch    public job-board API (no key) -> numbered plain-text lines,
         |            Greenhouse, Lever, Ashby, SmartRecruiters, Workday, Eightfold, Oracle, amazon.jobs, State Farm,
         |            or any page with schema.org JobPosting data
         v
-coach.extract        81 skills matched by section: requirement > part of the job > nice to have; about-us,
+coach.extract        83 skills matched by section: requirement > part of the job > nice to have; about-us,
                      benefits and equal-opportunity text ignored; "security clearance" isn't a security skill
 callback.py brief    Markdown brief -> Cubbie makes the PDF: top skills with quotes, practical facts (pay, office,
                      start date, graduation, citizenship), what's NOT in the posting (ask your recruiter),
@@ -166,12 +171,12 @@ Calendar (prep blocks), reminders and phone calls (mock interviews, a 60-second 
   always valid JSON under Cubbie's 8,000-character read limit, never a traceback.
 - **Safe with untrusted input**: links into private networks are refused (including after redirects and DNS
   tricks), downloads are capped and read against a 100-second budget with a watchdog, company names that get spoken
-  on calls are cleaned, saved files can't escape the Skill's folder, and two runs can't
-  overwrite each other.
+  on calls must read as a plain name (else Cubbie says "the company"), credentials typed into a link are dropped,
+  saved files can't escape the Skill's folder, and two runs can't overwrite each other.
 - **Closed postings**: the first fetch is saved, so a posting that closes before the interview still works.
 - **Consent**: calendar events, calls, check-ins and emails always wait for the student's yes. "Stop" and "remove"
   cancel this Skill's scheduled calls first.
-- **Tested**: 66 offline tests (`python -m unittest discover -s tests -v`) with fake responses from every source,
+- **Tested**: 84 offline tests (`python -m unittest discover -s tests -v`) with fake responses from every source,
   closed, unreachable, rate-limited and hostile pages, ambiguous and intern-less searches, invite classification and
   scoring. CI also runs the sample flow and the Cubbie kit's Skill validator. Reviewed by three judge agents (a Cubbie
   engineer, a security and bug hunter, and a student), and their findings fixed.

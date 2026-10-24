@@ -29,5 +29,5 @@ jobs:
       - name: Cubbie Skill checks (cubbie-hackathon-kit validator)
         run: |
           pip install pyyaml==6.0.2
-          curl -sSfL -o /tmp/validate_cubbie_skill.py https://raw.githubusercontent.com/imaginix-inc/cubbie-hackathon-kit/main/skills/cubbie-skill-creator/scripts/validate_cubbie_skill.py
+          curl -sSfL -o /tmp/validate_cubbie_skill.py https://raw.githubusercontent.com/imaginix-inc/cubbie-hackathon-kit/bc505e9c41ea91de77f7a8b57214fd10901a100f/skills/cubbie-skill-creator/scripts/validate_cubbie_skill.py
           python /tmp/validate_cubbie_skill.py interview-callback

@@ -171,7 +171,7 @@
     {
       "term": "Spark",
       "cat": "data",
-      "regex": "\\b(?:Apache Spark|PySpark|Spark(?!\\s+(?:curiosity|joy|interest|innovation|ideas|change|conversations?|creativity))|Hadoop|Databricks)\\b"
+      "regex": "\\b(?:Apache Spark|PySpark|Spark(?!\\s+(?:curiosity|joy|interest|innovation|ideas|change|conversations?|creativity)))\\b"
     },
     {
       "term": "Data pipelines",
@@ -490,7 +490,7 @@
         "dns",
         "network protocols"
       ],
-      "not": "networking (opportunit|event|session)|professional networking|network(ing)? with (peers|leaders|other)"
+      "not": "networking (opportunit|event|session)|professional networking|network(ing)? with (peers|leaders|other)|exposure, networking|networking,? (and )?(professional|mentor|career|social)|(mentorship|mentoring|social|career),? (and )?networking"
     },
     {
       "term": "Security",
@@ -506,7 +506,7 @@
         "secure coding",
         "iam"
       ],
-      "not": "security clearance|social security|clearance|securities"
+      "not": "security clearance|social security|clearance|securities|employment authori|work authori|authori[sz]ed to work|sponsorship"
     },
     {
       "term": "Observability",
@@ -713,7 +713,8 @@
         "crm",
         "hubspot",
         "account management"
-      ]
+      ],
+      "not": "\\$[\\d.,]+\\s?(?:[bmk]|billion|million)?\\b[^.]{0,30}\\bsales\\b|\\bin 20\\d\\d sales|(?:annual|net|global|record) sales|sales of \\$"
     },
     {
       "term": "Project management",
@@ -897,6 +898,15 @@
         "ai development tools",
         "leverage ai",
         "use ai"
+      ]
+    },
+    {
+      "term": "Hadoop",
+      "cat": "data",
+      "aliases": [
+        "hadoop",
+        "hdfs",
+        "mapreduce"
       ]
     }
   ]

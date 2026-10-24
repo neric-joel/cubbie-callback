@@ -4,6 +4,9 @@ Supported: Greenhouse, Lever, Ashby, SmartRecruiters and Workday links, a search
 first four (plus a few known Workday tenants), and any other career page that publishes schema.org JobPosting data.
 """
 
+from __future__ import annotations
+
+import functools
 import html
 import http.client
 import ipaddress
@@ -15,9 +18,11 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from html.parser import HTMLParser
+from typing import Any
 
 USER_AGENT = "interview-callback/1.0 (+https://github.com/neric-joel/cubbie-callback)"
 TIMEOUT = 20
@@ -59,10 +64,10 @@ class BoardError(Exception):
         self.candidates = candidates or []
 
 
-_PUBLIC = {}  # host -> the vetted public IP we connect to, or None when the host is private
+_PUBLIC = {}  # host -> the vetted public IPs we connect to (IPv4 first), or None when the host is private
 
 
-def check_public(url):
+def check_public(url: str) -> list[str]:
     """Refuse links that point into a private network (the sandbox, a router, a cloud metadata service)."""
     parts = urllib.parse.urlsplit(url)
     host = (parts.hostname or "").lower()
@@ -73,26 +78,33 @@ def check_public(url):
             addrs = [info[4][0] for info in socket.getaddrinfo(host, None)]
         except (socket.gaierror, UnicodeError, ValueError):
             raise BoardError("unreachable", f"could not find the website {host}")
-        ips = [ipaddress.ip_address(a.split("%")[0]) for a in addrs]
-        _PUBLIC[host] = str(ips[0]) if ips and all(ip.is_global for ip in ips) else None
+        ips = sorted({ipaddress.ip_address(a.split("%")[0]) for a in addrs}, key=lambda ip: ip.version)
+        _PUBLIC[host] = [str(ip) for ip in ips] if ips and all(ip.is_global for ip in ips) else None
     if not _PUBLIC[host]:
         raise BoardError("bad_input", f"{host} is a private network address, not a public job page")
     return _PUBLIC[host]
 
 
-class _PinnedHTTPS(http.client.HTTPSConnection):
-    """Connects to the IP check_public vetted, so a second DNS answer can't point us somewhere private."""
+def _connect_vetted(scheme, host, port, timeout):
+    """A socket to one of the addresses check_public vetted, so a second DNS answer can't point us somewhere private."""
+    error = None
+    for ip in check_public(f"{scheme}://{host}/"):
+        try:
+            return socket.create_connection((ip, port), timeout)
+        except OSError as e:
+            error = e
+    raise error or OSError(f"no address for {host}")
 
+
+class _PinnedHTTPS(http.client.HTTPSConnection):
     def connect(self):
-        ip = check_public(f"https://{self.host}/")
-        sock = socket.create_connection((ip, self.port), self.timeout)
+        sock = _connect_vetted("https", self.host, self.port, self.timeout)
         self.sock = ssl.create_default_context().wrap_socket(sock, server_hostname=self.host)
 
 
 class _PinnedHTTP(http.client.HTTPConnection):
     def connect(self):
-        ip = check_public(f"http://{self.host}/")
-        self.sock = socket.create_connection((ip, self.port), self.timeout)
+        self.sock = _connect_vetted("http", self.host, self.port, self.timeout)
 
 
 class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
@@ -111,7 +123,10 @@ class _SafeRedirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-_OPENER = urllib.request.build_opener(_PinnedHTTPSHandler, _PinnedHTTPHandler, _SafeRedirect)
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _PinnedHTTPSHandler, _PinnedHTTPHandler,
+                                      _SafeRedirect)
+# Behind a proxy (HTTPS_PROXY) the proxy resolves names, so pinning can't apply; links are still vetted first.
+_PROXY_OPENER = urllib.request.build_opener(_SafeRedirect)
 
 
 def _read_body(resp):
@@ -129,10 +144,11 @@ def _read_body(resp):
 
 
 def _open(req, timeout):
-    return _OPENER.open(req, timeout=timeout)
+    opener = _PROXY_OPENER if urllib.request.getproxies() else _OPENER
+    return opener.open(req, timeout=timeout)
 
 
-def http_get(url, data=None, headers=None):
+def http_get(url: str, data: bytes | None = None, headers: dict | None = None) -> tuple[int, str]:
     """Return (status, body). 404/410 come back as a status; every other failure raises BoardError."""
     check_public(url)
     hdrs = {"User-Agent": USER_AGENT, "Accept": "application/json, text/html;q=0.9"}
@@ -158,7 +174,7 @@ def http_get(url, data=None, headers=None):
             raise BoardError("unreachable", f"could not read {host}: {type(e).__name__}")
 
 
-def get_json(url, data=None, headers=None):
+def get_json(url: str, data: bytes | None = None, headers: dict | None = None) -> tuple[int, Any]:
     status, body = http_get(url, data=data, headers=headers)
     if status != 200:
         return status, None
@@ -236,7 +252,7 @@ def _split_long(line, limit=280):
 MAX_HTML = 400_000
 
 
-def html_to_lines(fragment):
+def html_to_lines(fragment: str | None) -> list[str]:
     """Plain-text lines of an HTML fragment: one per paragraph, list item or heading; long ones split by sentence."""
     fragment = (fragment or "")[:MAX_HTML]
     if "&lt;" in fragment:
@@ -249,8 +265,13 @@ def html_to_lines(fragment):
         parser.close()
     except (AssertionError, ValueError):
         return text_to_lines(re.sub(r"<[^<>]{0,200}>", "\n", fragment))
+    text = "".join(parser.parts)
+    for _ in range(3):
+        if not re.search(r"&(?:#\d+|#x[0-9a-f]+|[a-z]+);", text, re.I):
+            break
+        text = html.unescape(text)
     lines = []
-    for raw in "".join(parser.parts).split("\n"):
+    for raw in text.split("\n"):
         line = re.sub(r"\s+", " ", raw.translate(PUNCT)).strip()
         if line in ("", "-"):
             continue
@@ -258,7 +279,7 @@ def html_to_lines(fragment):
     return lines
 
 
-def text_to_lines(text):
+def text_to_lines(text: str | None) -> list[str]:
     lines = []
     for raw in (text or "").splitlines():
         line = re.sub(r"\s+", " ", raw.translate(PUNCT)).strip()
@@ -270,7 +291,7 @@ def text_to_lines(text):
 
 # ---------------------------------------------------------------- links
 
-def parse_link(url):
+def parse_link(url: str) -> dict:
     """Which board a job link belongs to and the ids needed to fetch it."""
     url = (url or "").strip().rstrip(".,;:!?)]}>\"'")
     try:
@@ -279,6 +300,13 @@ def parse_link(url):
         raise BoardError("bad_input", f"not a web link: {url!r}")
     if parts.scheme not in ("http", "https") or not parts.netloc:
         raise BoardError("bad_input", f"not a web link: {url!r}")
+    if parts.username is not None or parts.password is not None:  # https://user:secret@host/...: drop the secret
+        try:
+            port = f":{parts.port}" if parts.port else ""
+        except ValueError:
+            raise BoardError("bad_input", "that link has a broken port number")
+        parts = parts._replace(netloc=f"{parts.hostname or ''}{port}")
+        url = urllib.parse.urlunsplit(parts)
     host = (parts.hostname or "").lower()
     segs = [s for s in parts.path.split("/") if s]
     query = urllib.parse.parse_qs(parts.query)
@@ -337,15 +365,16 @@ def _now():
 MAX_CHARS = 60_000
 
 
-def clean_name(text, cap):
+def clean_name(text: str | None, cap: int) -> str:
     """Company and job names are spoken on calls: keep one short plain phrase, nothing that reads as instructions."""
     text = re.sub(r"\s+", " ", str(text or "")).strip()
-    text = re.split(r"(?<=[.!?;])\s|\s(?=(?:SYSTEM|IGNORE|INSTRUCTIONS?)\b)", text)[0]
+    text = re.split(r"(?<=[a-z]{3}[.!?;])\s|(?<=[!?;])\s|\s(?=(?:SYSTEM|IGNORE|INSTRUCTIONS?)\b)", text)[0]
     text = re.sub(r"[^\w &.,'()/+#:@-]", "", text).strip(" .,:;-")
     return text[:cap].rstrip()
 
 
-def _posting(board, company, title, location, source_url, body_lines, extra=None):
+def _posting(board: str, company: str | None, title: str | None, location: str | None, source_url: str | None,
+             body_lines: list[str], extra: dict | None = None) -> dict:
     if not body_lines:
         raise BoardError("not_found", "the posting has no description text")
     kept, size = [], 0
@@ -489,12 +518,25 @@ AMAZON_SEARCH = "https://www.amazon.jobs/en/search.json"
 AMAZON_NAMES = {"amazon", "aws", "amazonwebservices", "amazon-web-services", "amazonjobs"}
 
 
+def _amazon_location(j):
+    places = []
+    for raw in j.get("locations") or []:
+        try:
+            loc = json.loads(raw) if isinstance(raw, str) else raw
+        except ValueError:
+            continue
+        if isinstance(loc, dict) and loc.get("city"):
+            places.append(", ".join(x for x in (loc.get("city"), loc.get("normalizedStateName"),
+                                                loc.get("countryIso3a")) if x))
+    return "; ".join(dict.fromkeys(places)) or j.get("normalized_location") or j.get("location")
+
+
 def _amazon_posting(j, company=None):
     body = (f"<h3>Description</h3>{j.get('description') or ''}"
             f"<h3>Basic qualifications</h3>{j.get('basic_qualifications') or ''}"
             f"<h3>Preferred qualifications</h3>{j.get('preferred_qualifications') or ''}")
     return _posting("amazon", company or j.get("company_name") or "Amazon", j.get("title"),
-                    j.get("normalized_location") or j.get("location"), f"https://www.amazon.jobs{j.get('job_path', '')}",
+                    _amazon_location(j), f"https://www.amazon.jobs{j.get('job_path', '')}",
                     html_to_lines(body))
 
 
@@ -510,37 +552,26 @@ def _list_amazon(role):
     q = urllib.parse.quote(role)
     status, d = get_json(f"{AMAZON_SEARCH}?base_query={q}&result_limit=25&sort=relevant")
     return [{"board": "amazon", "title": j.get("title"), "url": f"https://www.amazon.jobs{j.get('job_path', '')}",
-             "location": j.get("normalized_location") or j.get("location"),
+             "location": _amazon_location(j),
              "fetch": {"board": "amazon", "slug": "amazon", "job_id": str(j.get("id_icims"))}}
             for j in (d or {}).get("jobs") or []]
 
 
-class _JsonLd(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self.inside = False
-        self.blocks = []
-        self.title = ""
-        self._in_title = False
+LD_OPEN = re.compile(r"<script[^>]{0,200}application/ld\+json[^>]{0,100}>", re.I)
 
-    def handle_starttag(self, tag, attrs):
-        if tag == "script" and (dict(attrs).get("type") or "").lower() == "application/ld+json":
-            self.inside = True
-            self.blocks.append("")
-        if tag == "title":
-            self._in_title = True
 
-    def handle_endtag(self, tag):
-        if tag == "script":
-            self.inside = False
-        if tag == "title":
-            self._in_title = False
-
-    def handle_data(self, data):
-        if self.inside:
-            self.blocks[-1] += data
-        elif self._in_title:
-            self.title += data
+def _ld_json_blocks(page, limit=20):
+    blocks, pos, low = [], 0, page.lower()
+    while len(blocks) < limit:
+        m = LD_OPEN.search(page, pos)
+        if not m:
+            break
+        end = low.find("</script", m.end())
+        if end < 0:
+            break
+        blocks.append(page[m.end():end][:500_000])
+        pos = end
+    return blocks
 
 
 def _find_jobposting(node):
@@ -561,13 +592,11 @@ def _find_jobposting(node):
     return None
 
 
-def fetch_webpage(url, company=None):
+def fetch_webpage(url: str, company: str | None = None) -> dict:
     status, body = http_get(url)
     if status in (404, 410):
         raise BoardError("closed", "that job page is gone (closed or moved)")
-    blocks = re.findall(r"<script[^>]{0,200}application/ld\+json[^>]{0,100}>(.{0,500000}?)</script>", body[:3_000_000],
-                        re.S | re.I)
-    for block in blocks:
+    for block in _ld_json_blocks(body[:3_000_000]):
         try:
             job = _find_jobposting(json.loads(block, strict=False))
         except (ValueError, RecursionError):
@@ -591,7 +620,18 @@ def fetch_webpage(url, company=None):
                                     "ability and pass the text with --text-file")
 
 
-def fetch_link(link, company=None):
+def _shape_safe(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except (AttributeError, TypeError, KeyError, IndexError) as e:
+            raise BoardError("unreachable", f"a job board answered in an unexpected format ({type(e).__name__})")
+    return wrapper
+
+
+@_shape_safe
+def fetch_link(link: dict, company: str | None = None) -> dict:
     """Fetch one posting from a parsed link (parse_link) or a search candidate's "fetch" dict."""
     board = link["board"]
     if link.get("job_id") is None and board in ("greenhouse", "lever", "ashby"):
@@ -624,20 +664,17 @@ def fetch_link(link, company=None):
     return fetch_webpage(link["url"], company)
 
 
-def fetch_by_link(url, company=None):
-    return fetch_link(parse_link(url), company)
-
-
 # ---------------------------------------------------------------- search by company + role
 
 ROLE_EXPANSIONS = {
     "swe": "software engineer", "sde": "software develop engineer", "pm": "product manager",
     "ml": "machine learning", "ai": "artificial intelligence", "ds": "data scientist", "internship": "intern",
-    "interns": "intern", "internships": "intern", "co": "", "op": "intern", "coop": "intern", "eng": "engineer", "engineering": "engineer",
+    "interns": "intern", "internships": "intern", "co": "", "op": "coop", "eng": "engineer", "engineering": "engineer",
     "dev": "develop", "developer": "develop", "development": "develop", "jr": "junior", "sr": "senior",
 }
 ROLE_NOISE = {"summer", "fall", "spring", "winter", "the", "a", "an", "and", "or", "of", "for", "at", "role", "position",
-              "remote", "hybrid", "onsite", "new", "grad"}
+              "remote", "hybrid", "onsite", "new", "grad", "paid", "evergreen", "person", "required", "citizen",
+              "citizenship", "clearance", "bachelor", "bachelors", "undergraduate", "undergrad", "s"}
 # Countries and their codes show up in titles ("SDE Intern (USA)", "... - Spain"); they name an office, not a role.
 PLACES = {"us", "usa", "can", "canada", "uk", "gbr", "india", "ind", "zaf", "spain", "esp", "germany", "deu", "ireland",
           "irl", "israel", "isr", "poland", "pol", "mexico", "mex", "brazil", "bra", "singapore", "sgp", "japan", "jpn",
@@ -648,8 +685,12 @@ PLACES = {"us", "usa", "can", "canada", "uk", "gbr", "india", "ind", "zaf", "spa
 ROLE_NOISE |= PLACES
 
 
-def normalize_title(text):
-    words = re.findall(r"[a-z0-9+#]+", (text or "").lower())
+TRAILING_PLACE = re.compile(r"\s*[-\u2013]\s*[A-Z][A-Za-z .]+,\s*[A-Z]{2}\)?\s*$")
+
+
+def normalize_title(text: str | None) -> list[str]:
+    text = TRAILING_PLACE.sub("", text or "")  # "... Engineer - Phoenix, AZ" names an office, not a role
+    words = re.findall(r"[a-z0-9+#]+", text.lower())
     out = []
     for w in words:
         if re.fullmatch(r"20\d\d", w) or w in ROLE_NOISE:
@@ -658,7 +699,7 @@ def normalize_title(text):
     return out
 
 
-def same_role(a, b):
+def same_role(a: str | None, b: str | None) -> bool:
     return normalize_title(a) == normalize_title(b)
 
 
@@ -666,13 +707,13 @@ def pretty_company(slug):
     return " ".join(w.capitalize() for w in re.split(r"[-_]", slug or "") if w)
 
 
-def covers(role, title):
+def covers(role: str, title: str | None) -> bool:
     """Every word of the role (after normalizing) appears in the title."""
     want, have = normalize_title(role), normalize_title(title)
     return bool(want) and all(w in have for w in want)
 
 
-def title_score(role, title):
+def title_score(role: str, title: str | None) -> float:
     want, have = normalize_title(role), normalize_title(title)
     if not want or not have:
         return 0.0
@@ -727,7 +768,7 @@ def _list_smartrecruiters(slug, role):
              "fetch": {"board": "smartrecruiters", "slug": slug, "job_id": str(j.get("id"))}} for j in d.get("content") or []]
 
 
-def search_text(role):
+def search_text(role: str) -> str:
     """What to type into a career site's search box: SWE -> software engineer, no punctuation, no season or year."""
     words = [w for w in normalize_title(role) if w not in ("intern", "develop")] or normalize_title(role)
     text = " ".join(words)
@@ -814,7 +855,8 @@ def fetch_oracle(host, site, job_id, company=None):
                     f"https://{host}/hcmUI/CandidateExperience/en/sites/{site}/job/{job_id}", html_to_lines(body))
 
 
-def list_board(link, role):
+@_shape_safe
+def list_board(link: dict, role: str) -> list[dict]:
     """Every posting on one company's board (from a board link), ranked for a role."""
     listers = {"greenhouse": _list_greenhouse, "lever": _list_lever, "ashby": _list_ashby}
     jobs = listers[link["board"]](link["slug"]) if link["board"] in listers else []
@@ -823,7 +865,7 @@ def list_board(link, role):
     return rank(jobs, role)
 
 
-GENERIC = {"intern", "engineer", "develop", "analyst", "associate", "program", "summer", "student", "co", "op"}
+GENERIC = {"intern", "engineer", "develop", "analyst", "associate", "program", "summer", "student", "coop"}
 
 
 def _covers_discipline(role, title):
@@ -834,15 +876,36 @@ def _covers_discipline(role, title):
 
 
 SEASON_YEAR = re.compile(r"\b(summer|fall|spring|winter|20\d\d)\b", re.I)
+DEGREE = re.compile(r"\b(ph\.?d|doctoral|doctorate|masters?|master's|mba|graduate)\b", re.I)
+COOP = re.compile(r"\bco-?op\b", re.I)
 
 
-def rank(jobs, role, location=None, limit=5):
+def _without_company(title, company):
+    """'NVIDIA 2027 Internships: Software Engineering' scores as 'Internships: Software Engineering'."""
+    words = [w for w in re.findall(r"[a-z0-9]+", (company or "").lower()) if len(w) > 2]
+    if not words:
+        return title or ""
+    return re.sub(rf"\b(?:{'|'.join(map(re.escape, words))})\b", " ", title or "", flags=re.I)
+
+
+def rank(jobs: list[dict], role: str, location: str | None = None, limit: int = 5,
+         company: str | None = None) -> list[dict]:
     want = {w.lower() for w in SEASON_YEAR.findall(role)}
+    want_words = set(normalize_title(role))
     for j in jobs:
-        j["score"] = title_score(role, j["title"])
-        j["covers"] = covers(role, j["title"])
+        title = _without_company(j["title"], company)
+        j["score"] = title_score(role, title)
+        j["covers"] = covers(role, title)
+        j["exact"] = bool(want_words) and set(normalize_title(title)) == want_words
+        if DEGREE.search(title) and not DEGREE.search(role):  # a PhD or master's posting isn't the default intern one
+            j["score"] = round(j["score"] - 0.08, 3)
+        if COOP.search(title) and INTERN.search(role) and not COOP.search(role):
+            j["score"] = round(j["score"] - 0.15, 3)  # asked for an internship: a co-op is a different program
         have = {w.lower() for w in SEASON_YEAR.findall(j["title"] or "")}
-        j["season_mismatch"] = bool(want and have and not want <= have)
+        years_w, years_h = {w for w in want if w.isdigit()}, {w for w in have if w.isdigit()}
+        seasons_w, seasons_h = want - years_w, have - years_h
+        j["season_mismatch"] = bool((years_w and years_h and not years_w & years_h) or
+                                    (seasons_w and seasons_h and not seasons_w & seasons_h))
         if want and have:  # "Summer 2027" should beat "Fall 2026"
             j["score"] = round(j["score"] + (0.03 if want <= have else -0.1), 3)
         elif not want:
@@ -856,7 +919,8 @@ def rank(jobs, role, location=None, limit=5):
     return same_title + [j for j in jobs if not same_role(j["title"], best)]  # callers trim what they show
 
 
-def search(company, role, location=None, limit=5):
+@_shape_safe
+def search(company: str, role: str, location: str | None = None, limit: int = 5) -> list[dict]:
     """Candidate postings for a company + role, best title match first."""
     jobs = []
     for slug in slug_candidates(company):
@@ -890,28 +954,42 @@ def search(company, role, location=None, limit=5):
             raise BoardError("no_intern", f"{company} has no open intern posting matching '{role}' right now",
                              candidates=order_for_student(rank(jobs, role, location, 3), location)[:3])
         jobs = interns
-    ranked = rank(jobs, role, location, limit)
+    ranked = rank(jobs, role, location, limit, company)
     relevant = [j for j in ranked if j["score"] >= 0.7 or j.get("covers") or _covers_discipline(role, j["title"])]
     if INTERN.search(role) and not relevant:
         raise BoardError("no_intern", f"{company} has no open intern posting close to '{role}' right now",
                          candidates=order_for_student(ranked, location)[:3])
-    _workday_offices(ranked)
-    return ranked
+    if not relevant:
+        return ranked
+    _workday_offices(relevant[:30])
+    relevant = rank(relevant, role, location, limit, company)  # again, now that every office is known
+    for j in relevant:
+        j["relevant"] = True
+    if INTERN.search(role) and location and is_us_place(location) and not any(is_us(j.get("location")) for j in relevant):
+        raise BoardError("no_intern", f"{company} has no '{role}' posting in the US right now; the closest are abroad",
+                         candidates=relevant[:3])
+    return relevant
 
 
 INTERN = re.compile(r"\b(intern(?:s|ships?)?|co-?ops?|apprentice\w*|summer (?:analyst|associate)s?|students?)\b", re.I)
 
 
 def _workday_offices(cands):
-    """Workday lists a posting with several offices as '5 Locations'; read the real ones for the top few."""
-    for c in cands[:12]:
+    """Workday lists a posting with several offices as '5 Locations'; read the real ones (in parallel)."""
+    todo = [c for c in cands if c["fetch"]["board"] == "workday"
+            and re.fullmatch(r"\d+ Locations", str(c.get("location") or ""))]
+
+    def resolve(c):
         f = c["fetch"]
-        if f["board"] == "workday" and re.fullmatch(r"\d+ Locations", str(c.get("location") or "")):
-            try:
-                status, d = get_json(f"https://{f['slug']}.{f['wd']}.myworkdayjobs.com/wday/cxs/{f['slug']}/{f['site']}/{f['job_path']}")
-                c["location"] = _workday_location((d or {}).get("jobPostingInfo") or {}) or c["location"]
-            except BoardError:
-                pass
+        try:
+            status, d = get_json(f"https://{f['slug']}.{f['wd']}.myworkdayjobs.com/wday/cxs/{f['slug']}/{f['site']}/{f['job_path']}")
+            c["location"] = _workday_location((d or {}).get("jobPostingInfo") or {}) or c["location"]
+        except BoardError:
+            pass
+
+    if todo:
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            list(pool.map(resolve, todo))
 
 
 US_STATE = re.compile(r"\b(US|USA|AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|"
@@ -942,12 +1020,22 @@ NON_US = re.compile(r"\b(canada|united kingdom|uk|gbr|england|scotland|ireland|i
                     r"penang|kulim|manila|taguig|cape town|sao paulo|guadalajara)\b", re.I)
 
 
-def is_us(location):
+STATE_NAME = re.compile(r"\b(" + "|".join(sorted(STATES, key=len, reverse=True)) + r")\b", re.I)
+
+
+def is_us(location: str | None) -> bool:
     parts = [p for p in re.split(r"[;|]", str(location or "")) if p.strip()] or [""]
-    return any(not NON_US.search(p) and bool(US_STATE.search(p) or US_PLACE.search(p)) for p in parts)
+    return any(not NON_US.search(p) and bool(US_STATE.search(p) or US_PLACE.search(p) or STATE_NAME.search(p))
+               for p in parts)
 
 
-def location_matches(wanted, location):
+def is_us_place(text: str | None) -> bool:
+    """The student's own place ("Arizona", "AZ", "Tempe") is in the US."""
+    text = (text or "").strip()
+    return bool(text) and (is_us(text) or text.upper() in STATES.values())
+
+
+def location_matches(wanted: str | None, location: str | None) -> bool:
     """'Arizona', 'AZ' and 'Phoenix' all match 'US, Arizona, Chandler' or 'Phoenix, AZ' as appropriate."""
     want, have = (wanted or "").strip().lower(), str(location or "")
     if not want or not have:
@@ -961,7 +1049,8 @@ def location_matches(wanted, location):
     return False
 
 
-def choose(candidates, min_score=0.75, margin=0.06, location=None):
+def choose(candidates: list[dict], min_score: float = 0.75, margin: float = 0.06,
+           location: str | None = None) -> dict | None:
     """The clear winner among search candidates, or None when the student has to pick.
 
     Postings within `margin` of the best title score are contenders. If the student named a place and the contenders
@@ -969,6 +1058,9 @@ def choose(candidates, min_score=0.75, margin=0.06, location=None):
     match, and the one in the student's place, else a US one, is used; the caller says which office it picked.
     """
     candidates = [c for c in candidates if not c.get("season_mismatch")] or candidates
+    if not location or is_us_place(location):
+        # a better-worded posting in Shanghai shouldn't make a US student's match ambiguous
+        candidates = [c for c in candidates if is_us(c.get("location"))] or candidates
     if not candidates:
         return None
     top = candidates[0]
@@ -978,6 +1070,11 @@ def choose(candidates, min_score=0.75, margin=0.06, location=None):
         local = [c for c in good if location_matches(location, c.get("location"))]
         if local and all(same_role(c["title"], local[0]["title"]) for c in local):
             return local[0]
+    exact = [c for c in candidates if c.get("exact")]
+    if exact and (not location or not is_us_place(location) or is_us(exact[0].get("location"))):
+        # the title is the role the student typed, word for word (offices and seasons aside)
+        local = [c for c in exact if location and location_matches(location, c.get("location"))]
+        return (local or exact)[0]
     if top["score"] < min_score:
         return None
     contenders = [c for c in candidates if top["score"] - c["score"] < margin]
@@ -1001,11 +1098,11 @@ def choose(candidates, min_score=0.75, margin=0.06, location=None):
     return (us or same)[0]
 
 
-def order_for_student(candidates, location=None):
+def order_for_student(candidates: list[dict], location: str | None = None) -> list[dict]:
     """Candidates to show the student: their place first, then US offices, then the rest."""
     return sorted(candidates, key=lambda c: (not location_matches(location, c.get("location")) if location else 0,
                                              not is_us(c.get("location")), -c.get("score", 0)))
 
 
-def fetch_candidate(candidate, company=None):
+def fetch_candidate(candidate: dict, company: str | None = None) -> dict:
     return fetch_link(candidate["fetch"], company)

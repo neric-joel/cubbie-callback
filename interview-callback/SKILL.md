@@ -158,7 +158,7 @@ phrases, so if the answer clearly made a "missed" point in other words, run `sco
 label>"` (so redos and weak spots agree) and tell the student in one line that it counts and why. Otherwise don't add
 points it didn't find; you may add one concrete suggestion for the missed point, using the posting line it cites. In
 tough mode the texts end with a follow-up question; score the reply to it with `score` as usual (it grades only the
-points that were missed).
+point the follow-up asked about, credits it as "after the hint", and keeps the original score so a redo still counts).
 
 Then offer the next round as a check-in at a time the student picks: a redo of the weakest answer
 (`question --retry`, the scorecard then shows "2/4 last time, 4/4 now") or a new question (`question`). When

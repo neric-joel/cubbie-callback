@@ -13,6 +13,8 @@ Output is JSON. Exit codes: 0 ok, 1 unexpected error, 2 missing or bad input, 3 
 postings, 5 job board unreachable, 6 posting closed and no saved copy, 7 no saved interview, 8 every question asked.
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -24,6 +26,7 @@ import traceback
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import NoReturn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import boards  # noqa: E402
@@ -52,7 +55,7 @@ def _shrink(x, chars, items):
     return x
 
 
-def emit(data, code=0):
+def emit(data: dict, code: int = 0) -> NoReturn:
     """Print JSON that always parses and fits: long strings and lists are shortened, `next` survives."""
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
@@ -73,7 +76,7 @@ def now():
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def read_file(path, what):
+def read_file(path: str, what: str) -> str:
     try:
         with open(path, "rb") as fh:
             return fh.read(2_000_000).decode("utf-8", errors="replace")
@@ -83,14 +86,14 @@ def read_file(path, what):
 
 # ---------------------------------------------------------------- saved state (under HOME, survives Skill updates)
 
-def state_dir(sample):
+def state_dir(sample: bool) -> Path:
     root = Path(os.environ.get("INTERVIEW_CALLBACK_HOME") or Path.home() / ".config" / "interview-callback")
     d = root / "sample" if sample else root
     (d / "interviews").mkdir(parents=True, exist_ok=True)
     return d
 
 
-def all_records(sd):
+def all_records(sd: Path) -> list[dict]:
     recs = []
     for f in (sd / "interviews").glob("*.json"):
         try:
@@ -108,7 +111,7 @@ def record_path(sd, rid):
     return sd / "interviews" / f"{rid}.json"
 
 
-def load(sd, rid):
+def load(sd: Path, rid: str | None) -> dict:
     if rid:
         f = record_path(sd, rid)
         if not f.exists():
@@ -123,7 +126,7 @@ def load(sd, rid):
 _LAST_TS = [0.0]
 
 
-def save(sd, rec):
+def save(sd: Path, rec: dict) -> None:
     rec["updated_at"] = now()
     # strictly increasing, so "the most recent interview" never ties within one clock tick
     newest = max([r.get("updated_ts", 0) for r in all_records(sd)] + [_LAST_TS[0]])
@@ -173,17 +176,23 @@ def new_id(sd, posting):
     return rid
 
 
-def build_record(sd, posting, link, when, existing=None):
+def build_record(sd: Path, posting: dict, link: str | None, when: str | None, existing: dict | None = None,
+                 place: str | None = None) -> dict:
     rec = existing or {"id": new_id(sd, posting), "created_at": now(), "asked": [], "questions": {}, "scores": []}
-    rec.update({"link": link or rec.get("link"), "posting": posting, "skills": coach.extract(posting["lines"]),
-                "facts": coach.facts(posting["lines"]), "keywords": coach.posting_keywords(posting["lines"], posting["company"])})
+    place = place or rec.get("place")
+    prefer = (lambda line: boards.location_matches(place, line)) if place else None
+    rec.update({"link": link or rec.get("link"), "posting": posting, "skills": coach.extract(posting["lines"], posting["company"]),
+                "facts": coach.facts(posting["lines"], prefer),
+                "keywords": coach.posting_keywords(posting["lines"], posting["company"], title=posting["title"])})
+    if place:
+        rec["place"] = place
     rec.pop("closed_at", None)
     if when:
         rec["when"] = when
     return rec
 
 
-def summary(rec, status):
+def summary(rec: dict, status: str) -> dict:
     p = rec["posting"]
     top = [{"term": s["term"], "kind": s["kind"], "mentions": s["mentions"], "line": s["line"]}
            for s in rec["skills"] if s["kind"] != "nice"][:5]
@@ -221,13 +230,15 @@ def _ambiguous(company, role, cands, location=None):
 
 def _from_candidates(sd, a, cands, company):
     pick = boards.choose(cands, location=a.location)
+    if not pick and len(cands) == 1 and cands[0].get("relevant"):
+        pick = cands[0]  # one posting matched: use it (the student is told which, and can correct it)
     if not pick:
         raise _ambiguous(company, a.role, cands, a.location)
     try:
         posting = boards.fetch_candidate(pick, a.company)
     except boards.BoardError as e:
         raise Stop(e.kind, e.message, NEXT.get(e.kind, ""))
-    rec = build_record(sd, posting, pick["url"], a.when, find_existing(sd, posting))
+    rec = build_record(sd, posting, pick["url"], a.when, find_existing(sd, posting), a.location)
     save(sd, rec)
     out = summary(rec, "matched")
     out["matched_title"], out["match"] = pick["title"], pick["score"]
@@ -236,7 +247,8 @@ def _from_candidates(sd, a, cands, company):
                      and (boards.is_us(c.get("location")) or not boards.is_us(pick.get("location")))})
     if others:
         out["other_offices"] = others[:8]
-    if a.location and not boards.location_matches(a.location, pick.get("location")):
+    if a.location and not boards.location_matches(a.location, pick.get("location")) and \
+            not boards.location_matches(a.location, posting.get("location")):
         out["location_note"] = f"No {a.location} posting for this role; this one is in {pick.get('location') or 'an unlisted place'}."
     elif not a.location and pick.get("location") and not boards.is_us(pick.get("location")):
         out["location_note"] = (f"This posting is in {pick['location']}. If the interview is for another office, "
@@ -246,7 +258,7 @@ def _from_candidates(sd, a, cands, company):
     return out
 
 
-def cmd_fetch(a, sd):
+def cmd_fetch(a: argparse.Namespace, sd: Path) -> dict:
     if a.sample:
         d = json.loads((ASSETS / "sample_posting.json").read_text(encoding="utf-8"))
         posting = boards.posting_from_greenhouse(d, "saguaropay")
@@ -261,9 +273,11 @@ def cmd_fetch(a, sd):
         lines = boards.text_to_lines(read_file(a.text_file, "posting text"))
         if len(lines) < 3:
             raise Stop("bad_input", "the posting text is nearly empty", "Read the job page again or ask for a screenshot.")
-        posting = {"board": "pasted", "company": a.company, "title": a.role, "location": a.location or "",
-                   "source_url": a.source_url or "", "fetched_at": now(), "lines": lines}
-        rec = build_record(sd, posting, a.source_url, a.when, find_existing(sd, posting, a.source_url))
+        try:
+            posting = boards._posting("pasted", a.company, a.role, a.location, a.source_url or "", lines)
+        except boards.BoardError as e:
+            raise Stop("bad_input", e.message, "Read the job page again or ask for a screenshot.")
+        rec = build_record(sd, posting, a.source_url, a.when, find_existing(sd, posting, a.source_url), a.location)
         save(sd, rec)
         return summary(rec, "from_text")
 
@@ -308,7 +322,7 @@ def cmd_fetch(a, sd):
     raise Stop("bad_input", "give --url, or --company and --role, or --text-file", "Ask the student for the job link.")
 
 
-def cmd_brief(a, sd):
+def cmd_brief(a: argparse.Namespace, sd: Path) -> dict:
     rec = load(sd, a.id)
     if a.when:
         rec["when"] = a.when
@@ -330,7 +344,7 @@ def _best_scores(rec):
     return best
 
 
-def cmd_question(a, sd):
+def cmd_question(a: argparse.Namespace, sd: Path) -> dict:
     rec = load(sd, a.id)
     tone = a.tone or rec.get("tone") or "chill"
     retry_of = None
@@ -374,7 +388,8 @@ def cmd_question(a, sd):
     return out
 
 
-def cmd_score(a, sd):
+def _answer_target(a, sd):
+    """The interview and question an answer (or a --credit) belongs to."""
     waiting = [] if a.id else [r for r in all_records(sd) if r.get("pending_question")]
     if len(waiting) > 1 and not a.credit:
         raise Stop("ambiguous", "several interviews are waiting for an answer",
@@ -388,18 +403,17 @@ def cmd_score(a, sd):
         rec = max(scored, key=lambda r: r["scores"][-1]["at"]) if scored else load(sd, None)
     else:
         rec = waiting[0] if waiting else load(sd, a.id)
-    qid = a.question_id or rec.get("pending_question") or rec.get("last_question")
+    qid = a.question_id or rec.get("pending_question")
     if a.credit and not a.question_id and rec.get("last_question"):
         qid = rec["last_question"]
     q = (rec.get("questions") or {}).get(qid or "")
     if not q:
         raise Stop("bad_input", "no question is waiting for an answer",
                    "Run question first, or pass --question-id (list shows the interview's questions).")
-    if a.credit:
-        return _credit(sd, rec, qid, a.credit)
-    follow = rec.get("follow_up") if not a.question_id or a.question_id == (rec.get("follow_up") or {}).get("question_id") else None
-    if follow and follow.get("question_id") == qid:
-        q = dict(q, points=[p for p in q["points"] if p["label"] in follow["points"]])
+    return rec, qid, q
+
+
+def _read_answer(a):
     if a.answer_file:
         answer = read_file(a.answer_file, "answer")
     elif a.answer:
@@ -410,6 +424,19 @@ def cmd_score(a, sd):
         raise Stop("bad_input", "give --answer-file or --answer", "Transcribe the voice note to a file and pass it.")
     if len(answer.split()) < 5:
         raise Stop("bad_input", "the answer is only a few words", "Ask the student to answer again in a voice note.")
+    return answer
+
+
+def cmd_score(a: argparse.Namespace, sd: Path) -> dict:
+    rec, qid, q = _answer_target(a, sd)
+    if a.credit:
+        return _credit(sd, rec, qid, a.credit)
+    follow = rec.get("follow_up") if not a.question_id or a.question_id == (rec.get("follow_up") or {}).get("question_id") else None
+    if follow and follow.get("question_id") == qid:
+        q = dict(q, points=[p for p in q["points"] if p["label"] in follow["points"]])
+    else:
+        follow = None
+    answer = _read_answer(a)
     before = None if follow else _best_scores(rec).get(qid)
     result = coach.score_answer(q, answer)
     if follow:
@@ -417,23 +444,28 @@ def cmd_score(a, sd):
         result["tips"] = []
         result["follow_up_of"] = qid
         row = next((s for s in reversed(rec.get("scores", [])) if s["question_id"] == qid), None)
-        for p in result["points"]:
-            if p["covered"] and row and p["point"] in row["missed"]:
-                row["missed"].remove(p["point"])
-                row["covered"] += 1
-        if row:
-            ratio = row["covered"] / row["total"]
-            row["verdict"] = "strong" if ratio >= 0.75 else "solid" if ratio >= 0.5 else "needs work"
+        got = [p["point"] for p in result["points"] if p["covered"]]
+        if row and got:
+            row["after_hint"] = sorted(set(row.get("after_hint", [])) | {g for g in got if g in row["missed"]})
     else:
         rec.setdefault("scores", []).append({"at": now(), "question_id": qid, "covered": result["covered"],
                                              "total": result["total"], "verdict": result["verdict"],
                                              "missed": result["missed"]})
-    rec.pop("pending_question", None)
-    rec.pop("follow_up", None)
+    if rec.get("pending_question") == qid:  # another question may still be waiting; it keeps waiting
+        rec.pop("pending_question", None)
+    if (rec.get("follow_up") or {}).get("question_id") == qid:
+        rec.pop("follow_up", None)
     rec["last_question"] = qid
     head = f"{result['covered']}/{result['total']} key points: {result['verdict']}."
+    if result["verdict"] == "key words only":
+        head = f"{result['covered']}/{result['total']} key points, but only as key words. Say how and why, in about a minute."
     if follow:
-        head = "Follow-up: got it." if not result["missed"] else "Follow-up: not quite."
+        row = next((s for s in reversed(rec.get("scores", [])) if s["question_id"] == qid), None)
+        if not result["missed"] and row:
+            head = (f"Follow-up: got it. That's {row['covered']}/{row['total']} on your own, "
+                    f"+{len(row.get('after_hint', []))} after the hint. A redo without the hint is the real test.")
+        else:
+            head = "Follow-up: got it." if not result["missed"] else "Follow-up: not quite."
     if before:
         head = f"{before['covered']}/{before['total']} last time, {result['covered']}/{result['total']} now: {result['verdict']}."
         result["progress"] = f"{before['covered']}/{before['total']} -> {result['covered']}/{result['total']}"
@@ -476,7 +508,7 @@ def _credit(sd, rec, qid, label):
     last["missed"].remove(match)
     last["covered"] += 1
     last["credited"] = last.get("credited", []) + [match]
-    last["verdict"] = "strong" if last["covered"] / last["total"] >= 0.75 else "solid" if last["covered"] / last["total"] >= 0.5 else "needs work"
+    last["verdict"] = coach.verdict_for(last["covered"], last["total"])
     if rec.get("follow_up", {}).get("question_id") == qid:
         rec["follow_up"]["points"] = [p for p in rec["follow_up"]["points"] if p != match]
         if not rec["follow_up"]["points"]:
@@ -487,7 +519,7 @@ def _credit(sd, rec, qid, label):
             "score": f"{last['covered']}/{last['total']}", "next": "Tell the student in one line that the point counts."}
 
 
-def cmd_invite(a, sd):
+def cmd_invite(a: argparse.Namespace, sd: Path) -> dict:
     if a.email_file:
         text = read_file(a.email_file, "email")
     elif a.sample:
@@ -499,7 +531,7 @@ def cmd_invite(a, sd):
     return out
 
 
-def cmd_list(a, sd):
+def cmd_list(a: argparse.Namespace, sd: Path) -> dict:
     items = []
     for r in all_records(sd):
         last = (r.get("scores") or [None])[-1]
@@ -514,7 +546,7 @@ def cmd_list(a, sd):
     return {"ok": True, "interviews": items}
 
 
-def cmd_forget(a, sd):
+def cmd_forget(a: argparse.Namespace, sd: Path) -> dict:
     if a.all:
         files = list((sd / "interviews").glob("*.json")) + list((sd / "briefs").glob("*.md"))
         for f in files:
@@ -548,8 +580,9 @@ class JsonArgs(argparse.ArgumentParser):
         raise Stop("bad_input", f"bad command: {message}", "Check the command against SKILL.md and run it again.")
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> None:
     boards.DEADLINE = time.monotonic() + 100  # stay well inside the sandbox's 2-minute limit
+    argv = [str(x).encode("utf-8", "replace").decode("utf-8") for x in (sys.argv[1:] if argv is None else argv)]
     common = JsonArgs(add_help=False)
     common.add_argument("--sample", action="store_true", help="use the bundled example; no network; separate state")
     common.add_argument("--id", help="saved interview id (default: the most recent)")
