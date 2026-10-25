@@ -5,6 +5,11 @@ texts you what it asks for most (quoting the posting, with line numbers you can 
 mock interview questions by phone call or text. Each answer gets a scorecard against what the posting asked for, and
 a redo shows your progress ("2/4 last time, 4/4 now").
 
+[![Callback demo: the prep brief points back to the job posting](docs/callback-demo.png)](docs/callback-demo.mp4)
+
+*[80-second demo](docs/callback-demo.mp4): real messages from a test on Cubbie (Oct 24 2026), beside the Skill's real
+output for the same Amazon posting. The phone call is reenacted with the Skill's call script as captions.*
+
 Built at DevHacks Season 3 (ASU, Oct 24-25 2026) for the Cubbie Hackathon, Track 1.
 
 ## Install
@@ -80,7 +85,7 @@ number first; and the "that counts" credit is now recorded (`score --credit`) so
 ```text
 Saguaro Pay interview Thu Oct 29, 2:00 PM. Your prep brief is ready.
 Top of their list: Kafka and Distributed systems. In their words: "Curiosity about distributed systems and how Kafka-style event streaming works."
-Then Java, Go and Python; Data structures and algorithms; SQL and Testing.
+Then Java, Go or Python; Data structures and algorithms; SQL and Testing.
 The brief quotes the posting for every point, with line numbers so you can check it.
 [brief.pdf]
 Want me to set up your prep?
@@ -94,16 +99,17 @@ A payment event gets delivered twice through a queue like Kafka. How do you make
 once? Give me one real example. When we hang up, send your answer as a voice note..."* The student answers, and:
 
 ```text
-2/4 key points: needs work.
-Covered: delivery guarantees; offsets, acks or retries.
-Missed: idempotency (a unique key per payment); store what was processed. The posting says "Make retries safe so a merchant is never charged twice when a message is delivered more than once." (line 7).
-Follow-up: you didn't cover idempotency (a unique key per payment). How would you handle that here?
+1/4 key points: needs work.
+Covered: delivery guarantees.
+Missed: idempotency (a unique key per payment); store what was processed; offsets, acks or retries. The posting says "Make retries safe so a merchant is never charged twice when a message is delivered more than once." (line 7).
+Careful: committing the offset after the charge doesn't stop a double charge. If the consumer crashes in between, Kafka delivers the event again; an idempotency key is what makes that retry safe.
+Follow-up: If the same payment event arrives twice, how does your consumer know it already charged that payment?
 ```
 
 The student texts back, and the hint is credited on its own line, not into the score:
-`Follow-up: got it. That's 2/4 on your own, +1 after the hint. A redo without the hint is the real test.`
+`Follow-up: got it. That's 1/4 on your own, +1 after the hint. A redo without the hint is the real test.`
 
-The next evening, a redo: `2/4 last time, 4/4 now: strong.`
+The next evening, a redo: `1/4 last time, 4/4 now: strong.`
 
 (Saguaro Pay is the made-up sample posting bundled with the Skill.)
 
@@ -146,7 +152,7 @@ callback.py fetch    public job-board API (no key) -> numbered plain-text lines,
         |            Greenhouse, Lever, Ashby, SmartRecruiters, Workday, Eightfold, Oracle, amazon.jobs, State Farm,
         |            or any page with schema.org JobPosting data
         v
-coach.extract        83 skills matched by section: requirement > part of the job > nice to have; about-us,
+coach.extract        85 skills matched by section: requirement > part of the job > nice to have; about-us,
                      benefits and equal-opportunity text ignored; "security clearance" isn't a security skill
 callback.py brief    Markdown brief -> Cubbie makes the PDF: top skills with quotes, practical facts (pay, office,
                      start date, graduation, citizenship), what's NOT in the posting (ask your recruiter),
@@ -167,7 +173,7 @@ Calendar (prep blocks), reminders and phone calls (mock interviews, a 60-second 
 ## Reliability
 
 - **No dependencies**: Python 3 standard library only, so nothing to install on Cubbie and nothing to break.
-- **Every failure has a next step**: exit codes 1-8 each map to one line of instructions in `SKILL.md`; the output is
+- **Every failure has a next step**: exit codes 1-9 each map to one line of instructions in `SKILL.md`; the output is
   always valid JSON under Cubbie's 8,000-character read limit, never a traceback.
 - **Safe with untrusted input**: links into private networks are refused (including after redirects and DNS
   tricks), downloads are capped and read against a 100-second budget with a watchdog, company names that get spoken
@@ -176,7 +182,7 @@ Calendar (prep blocks), reminders and phone calls (mock interviews, a 60-second 
 - **Closed postings**: the first fetch is saved, so a posting that closes before the interview still works.
 - **Consent**: calendar events, calls, check-ins and emails always wait for the student's yes. "Stop" and "remove"
   cancel this Skill's scheduled calls first.
-- **Tested**: 84 offline tests (`python -m unittest discover -s tests -v`) with fake responses from every source,
+- **Tested**: 119 offline tests (`python -m unittest discover -s tests -v`) with fake responses from every source,
   closed, unreachable, rate-limited and hostile pages, ambiguous and intern-less searches, invite classification and
   scoring. CI also runs the sample flow and the Cubbie kit's Skill validator. Reviewed by three judge agents (a Cubbie
   engineer, a security and bug hunter, and a student), and their findings fixed.

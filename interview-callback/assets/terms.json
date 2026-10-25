@@ -302,10 +302,9 @@
         "scalability",
         "high availability",
         "fault tolerance",
-        "fault-tolerant",
-        "reliability"
+        "fault-tolerant"
       ],
-      "not": "at scale(?! system)|reliability engineer"
+      "not": "at scale(?! system)"
     },
     {
       "term": "System design",
@@ -377,8 +376,35 @@
         "test-driven",
         "tests",
         "test coverage",
-        "integration tests"
+        "integration tests",
+        "test"
+      ],
+      "not": "testing grounds?|\\ba/b test|test (?:of time|the waters)|put to the test|(?:coding|aptitude|skills?|drug|personality|online) tests?\\b"
+    },
+    {
+      "term": "Debugging",
+      "cat": "concept",
+      "aliases": [
+        "debug",
+        "debugging",
+        "debugger",
+        "root cause",
+        "root-cause",
+        "root causing"
       ]
+    },
+    {
+      "term": "Scripting/automation",
+      "cat": "tool",
+      "aliases": [
+        "scripting",
+        "scripts",
+        "automation",
+        "automate",
+        "automating",
+        "automated workflows"
+      ],
+      "not": "(?:marketing|industrial|factory|home|robotic process|process|sales) automation"
     },
     {
       "term": "CI/CD",
@@ -400,7 +426,11 @@
         "git",
         "github",
         "gitlab",
-        "version control"
+        "version control",
+        "code review",
+        "code reviews",
+        "pull request",
+        "pull requests"
       ]
     },
     {
@@ -439,8 +469,7 @@
       "aliases": [
         "terraform",
         "infrastructure as code",
-        "cloudformation",
-        "ansible"
+        "cloudformation"
       ]
     },
     {
@@ -639,8 +668,6 @@
         "tableau",
         "power bi",
         "looker",
-        "dashboards",
-        "dashboard",
         "data visualization",
         "visualizations"
       ]
@@ -721,7 +748,6 @@
       "cat": "business",
       "aliases": [
         "project management",
-        "agile",
         "scrum",
         "jira",
         "program management"
@@ -736,7 +762,8 @@
         "operations research",
         "procurement",
         "inventory"
-      ]
+      ],
+      "not": "^\\W*logistics\\s*:"
     },
     {
       "term": "Embedded systems",
@@ -854,8 +881,7 @@
         "analytical skills",
         "critical thinking",
         "solve complex problems",
-        "troubleshooting",
-        "debugging"
+        "troubleshooting"
       ]
     },
     {
@@ -876,11 +902,9 @@
       "cat": "soft",
       "aliases": [
         "leadership",
-        "lead projects",
-        "mentorship",
-        "mentoring"
+        "lead projects"
       ],
-      "not": "leadership (team|experiences? (with|at)|development program)|senior leadership|executive leadership"
+      "not": "leadership (team|experiences? (with|at)|development program)|leadership experiences?,|senior leadership|executive leadership"
     },
     {
       "term": "AI-assisted development",

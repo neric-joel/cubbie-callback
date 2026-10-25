@@ -1,5 +1,5 @@
 {
-  "_about": "Mock-interview questions keyed by a term in terms.json. Each point lists phrases that show the answer covered it (matched case-insensitively). star: true adds the STAR points below. {company} and {term} are filled in.",
+  "_about": "Mock-interview questions keyed by a term in terms.json. Each point lists phrases that show the answer covered it (matched case-insensitively); its first own point is the core. follow_up is the question a tough interviewer asks when the point is missed. wrong lists misconceptions: saying one un-credits its point (unless the 'unless' point was made) and adds the tip. star: true adds the STAR points below. {company} and {term} are filled in.",
   "star_points": [
     {
       "label": "set the scene (situation)",
@@ -18,7 +18,8 @@
         "internship",
         "hackathon",
         "project"
-      ]
+      ],
+      "follow_up": "Where was this, and what was going on at the time?"
     },
     {
       "label": "what you did, in first person",
@@ -47,7 +48,8 @@
         "i tested",
         "i designed",
         "i pushed"
-      ]
+      ],
+      "follow_up": "What did you do yourself, not the team?"
     },
     {
       "label": "the result, ideally a number",
@@ -67,7 +69,8 @@
         "got an a",
         "on time"
       ],
-      "number": true
+      "number": true,
+      "follow_up": "How did it turn out, and can you put a number on it?"
     },
     {
       "label": "what you learned",
@@ -81,7 +84,8 @@
         "since then",
         "taught me",
         "realized"
-      ]
+      ],
+      "follow_up": "What did you learn from it, and what would you do differently now?"
     }
   ],
   "generic_tech": {
@@ -89,7 +93,8 @@
     "points": [
       {
         "label": "names {term} and what you built with it",
-        "term": true
+        "term": true,
+        "follow_up": "What exactly did you build with {term}?"
       },
       {
         "label": "a specific decision and why",
@@ -103,7 +108,8 @@
           "decided",
           "picked",
           "the reason"
-        ]
+        ],
+        "follow_up": "What's one decision you made on that project, and why that over the alternative?"
       },
       {
         "label": "a measurable result",
@@ -115,7 +121,8 @@
           "shipped",
           "launched"
         ],
-        "number": true
+        "number": true,
+        "follow_up": "How did it turn out? What changed in numbers: users, speed or time saved?"
       },
       {
         "label": "what you'd do differently",
@@ -127,7 +134,8 @@
           "in hindsight",
           "looking back",
           "if i did it again"
-        ]
+        ],
+        "follow_up": "If you built it again, what would you change?"
       }
     ]
   },
@@ -137,12 +145,24 @@
       "q": "Why {company}, and why this role in particular?",
       "points": [
         {
-          "label": "names {company}",
-          "company": true
+          "label": "talks about {company} specifically",
+          "company": true,
+          "any": [
+            "your product",
+            "your products",
+            "your team",
+            "your company",
+            "you all",
+            "you guys",
+            "y'all",
+            "your mission"
+          ],
+          "follow_up": "What draws you to {company} in particular, rather than any company like it?"
         },
         {
           "label": "something specific from the posting",
-          "posting_keywords": true
+          "posting_keywords": true,
+          "follow_up": "Which part of the work in the posting do you most want to do?"
         },
         {
           "label": "connects it to your own experience",
@@ -154,8 +174,19 @@
             "in my",
             "my experience",
             "i've been",
-            "i have been"
-          ]
+            "i have been",
+            "i wrote",
+            "for my",
+            "i've used",
+            "i have used",
+            "my class",
+            "last semester",
+            "this semester",
+            "i've built",
+            "i made",
+            "my club"
+          ],
+          "follow_up": "What have you done before that connects to this role?"
         },
         {
           "label": "what you want to learn or contribute",
@@ -166,7 +197,8 @@
             "impact",
             "help",
             "build"
-          ]
+          ],
+          "follow_up": "What do you hope to learn or contribute here?"
         }
       ]
     },
@@ -187,7 +219,8 @@
             "sophomore",
             "freshman",
             "graduate"
-          ]
+          ],
+          "follow_up": "Where are you now: what year are you in, and what do you study?"
         },
         {
           "label": "one relevant project or job",
@@ -198,11 +231,13 @@
             "worked",
             "research",
             "hackathon"
-          ]
+          ],
+          "follow_up": "What's one project or job that shows you're ready for this role?"
         },
         {
           "label": "a skill the posting asks for",
-          "top_term": true
+          "top_term": true,
+          "follow_up": "Which skill from the posting have you used, and where?"
         },
         {
           "label": "why this role",
@@ -213,7 +248,32 @@
             "why",
             "excited"
           ],
-          "company_ok": true
+          "company_ok": true,
+          "follow_up": "Why this role at {company}, in one sentence?"
+        }
+      ]
+    },
+    {
+      "id": "setback-1",
+      "star": true,
+      "q": "Tell me about a project that didn't go as planned. What did you do?",
+      "points": [
+        {
+          "label": "what went wrong, specifically",
+          "any": [
+            "bug",
+            "deadline",
+            "broke",
+            "failed",
+            "didn't work",
+            "went wrong",
+            "problem",
+            "behind",
+            "conflict",
+            "crashed",
+            "mistake"
+          ],
+          "follow_up": "What exactly went wrong, and when did you notice?"
         }
       ]
     }
@@ -233,7 +293,8 @@
               "cannot change",
               "can change",
               "can't be changed"
-            ]
+            ],
+            "follow_up": "Which of the two can you change after you create it?"
           },
           {
             "label": "fast lookups by hashing",
@@ -243,7 +304,8 @@
               "o(1)",
               "fast lookup",
               "lookup"
-            ]
+            ],
+            "follow_up": "Why is checking membership in a set or dict faster than in a list?"
           },
           {
             "label": "dicts map keys to values",
@@ -252,7 +314,8 @@
               "keys",
               "key-value",
               "mapping"
-            ]
+            ],
+            "follow_up": "When would you reach for a dictionary instead?"
           },
           {
             "label": "sets keep unique items",
@@ -261,7 +324,8 @@
               "duplicate",
               "membership",
               "dedupe"
-            ]
+            ],
+            "follow_up": "What does a set give you that a list doesn't?"
           }
         ]
       }
@@ -278,7 +342,8 @@
               "order",
               "red-black",
               "tree"
-            ]
+            ],
+            "follow_up": "What does TreeMap give you that HashMap doesn't?"
           },
           {
             "label": "time complexity of each",
@@ -288,7 +353,8 @@
               "log n",
               "o(log",
               "logarithmic"
-            ]
+            ],
+            "follow_up": "What's the time complexity of a lookup in each?"
           },
           {
             "label": "how collisions are handled",
@@ -297,7 +363,8 @@
               "bucket",
               "linked list",
               "chaining"
-            ]
+            ],
+            "follow_up": "What happens inside a HashMap when two keys land in the same bucket?"
           },
           {
             "label": "the equals/hashCode contract",
@@ -305,7 +372,8 @@
               "equals",
               "hashcode",
               "hash code"
-            ]
+            ],
+            "follow_up": "If you override equals, what else do you have to override, and why?"
           }
         ]
       }
@@ -535,14 +603,16 @@
             "label": "join the tables",
             "any": [
               "join"
-            ]
+            ],
+            "follow_up": "How do you connect the users and orders tables?"
           },
           {
             "label": "group and sum",
             "any": [
               "group by",
               "sum"
-            ]
+            ],
+            "follow_up": "How do you get each customer's total?"
           },
           {
             "label": "sort and limit",
@@ -551,7 +621,8 @@
               "limit",
               "top 5",
               "top five"
-            ]
+            ],
+            "follow_up": "How do you keep only the top 5?"
           },
           {
             "label": "filter to last month",
@@ -559,7 +630,8 @@
               "where",
               "last month",
               "date"
-            ]
+            ],
+            "follow_up": "How do you limit it to last month?"
           },
           {
             "label": "an index",
@@ -567,7 +639,8 @@
               "index",
               "indexes",
               "indices"
-            ]
+            ],
+            "follow_up": "What would you index to make it fast?"
           }
         ]
       }
@@ -698,7 +771,8 @@
               "idempoten",
               "retries safe",
               "dedupe"
-            ]
+            ],
+            "follow_up": "If the same payment event arrives twice, how does your consumer know it already charged that payment?"
           },
           {
             "label": "delivery guarantees",
@@ -708,7 +782,8 @@
               "exactly once",
               "exactly-once",
               "at most once"
-            ]
+            ],
+            "follow_up": "What delivery guarantee does Kafka give you by default, and why does that matter here?"
           },
           {
             "label": "store what was processed",
@@ -719,7 +794,8 @@
               "processed",
               "table",
               "check if"
-            ]
+            ],
+            "follow_up": "Where would you record that a payment was already handled, and when do you write that record?"
           },
           {
             "label": "offsets, acks or retries",
@@ -729,7 +805,33 @@
               "retries",
               "commit",
               "ack"
-            ]
+            ],
+            "follow_up": "When would you commit the offset, before or after the charge, and why?"
+          }
+        ],
+        "wrong": [
+          {
+            "any": [
+              "commit the offset right after we charge",
+              "commit the offset right after the charge",
+              "commit the offset after charging",
+              "commit the offset after we charge",
+              "commit the offset after the charge",
+              "commits the offset after the charge"
+            ],
+            "point": "offsets, acks or retries",
+            "unless": "idempotency (a unique key per payment)",
+            "tip": "Careful: committing the offset after the charge doesn't stop a double charge. If the consumer crashes in between, Kafka delivers the event again; an idempotency key is what makes that retry safe."
+          },
+          {
+            "any": [
+              "exactly-once by default",
+              "exactly once by default",
+              "kafka guarantees exactly once",
+              "kafka is exactly once"
+            ],
+            "point": "delivery guarantees",
+            "tip": "Careful: Kafka isn't exactly-once by default. Plan for at-least-once delivery and make the charge idempotent."
           }
         ]
       }
@@ -835,7 +937,8 @@
               "redundan",
               "failover",
               "health check"
-            ]
+            ],
+            "follow_up": "How does traffic get away from the dead server?"
           },
           {
             "label": "timeouts and retries",
@@ -844,7 +947,8 @@
               "retries",
               "timeout",
               "backoff"
-            ]
+            ],
+            "follow_up": "What should the client do when the request just hangs?"
           },
           {
             "label": "safe retries (idempotency)",
@@ -852,7 +956,8 @@
               "idempoten",
               "duplicate",
               "twice"
-            ]
+            ],
+            "follow_up": "If the client retries, how do you keep the action from happening twice?"
           },
           {
             "label": "consistency trade-offs",
@@ -862,7 +967,8 @@
               "partition",
               "stale",
               "eventual"
-            ]
+            ],
+            "follow_up": "What can a user see while the servers disagree?"
           }
         ]
       }
@@ -1025,7 +1131,8 @@
               "map",
               "dictionary",
               "set"
-            ]
+            ],
+            "follow_up": "Can you do it in one pass? What would you store as you go?"
           },
           {
             "label": "linear time",
@@ -1034,7 +1141,8 @@
               "linear",
               "one pass",
               "single pass"
-            ]
+            ],
+            "follow_up": "What's the time complexity of your approach?"
           },
           {
             "label": "compare with brute force",
@@ -1044,7 +1152,8 @@
               "n squared",
               "nested loop",
               "two loops"
-            ]
+            ],
+            "follow_up": "What's the simplest approach, and why is it slower?"
           },
           {
             "label": "edge cases",
@@ -1054,7 +1163,8 @@
               "empty",
               "negative",
               "edge case"
-            ]
+            ],
+            "follow_up": "What edge cases would you test?"
           }
         ]
       }
@@ -1162,7 +1272,8 @@
               "fake",
               "sandbox",
               "test mode"
-            ]
+            ],
+            "follow_up": "How do you keep your tests from hitting the real payment service?"
           },
           {
             "label": "unit vs integration tests",
@@ -1171,7 +1282,8 @@
               "integration",
               "end-to-end",
               "e2e"
-            ]
+            ],
+            "follow_up": "Which of these would be unit tests and which integration tests?"
           },
           {
             "label": "failure cases",
@@ -1181,7 +1293,8 @@
               "failure",
               "timeout",
               "invalid"
-            ]
+            ],
+            "follow_up": "What failure cases would you test, like a declined card or a timeout?"
           },
           {
             "label": "automation in CI",
@@ -1190,7 +1303,8 @@
               "automated",
               "pipeline",
               "coverage"
-            ]
+            ],
+            "follow_up": "How do these tests run automatically on every change?"
           }
         ]
       }
@@ -1251,7 +1365,8 @@
               "fetch",
               "rebase",
               "merge"
-            ]
+            ],
+            "follow_up": "What git commands do you run first?"
           },
           {
             "label": "resolve the conflict markers",
@@ -1261,7 +1376,8 @@
               "keep both",
               "both changes",
               "edit the file"
-            ]
+            ],
+            "follow_up": "What do you do with the conflict markers in the file?"
           },
           {
             "label": "talk to the teammate",
@@ -1270,7 +1386,8 @@
               "ask",
               "teammate",
               "communicat"
-            ]
+            ],
+            "follow_up": "When would you talk to your teammate about it?"
           },
           {
             "label": "re-run tests",
@@ -1279,7 +1396,8 @@
               "run",
               "build",
               "check"
-            ]
+            ],
+            "follow_up": "How do you check nothing broke after you resolve it?"
           }
         ]
       }
@@ -2655,52 +2773,6 @@
         ]
       }
     ],
-    "Problem solving": [
-      {
-        "id": "debug-1",
-        "q": "Tell me about the hardest bug you've fixed. How did you track it down?",
-        "points": [
-          {
-            "label": "reproduced it",
-            "any": [
-              "reproduce",
-              "repro"
-            ]
-          },
-          {
-            "label": "narrowed it down",
-            "any": [
-              "isolat",
-              "narrow",
-              "binary search",
-              "bisect",
-              "print",
-              "log",
-              "debugger"
-            ]
-          },
-          {
-            "label": "found the root cause",
-            "any": [
-              "root cause",
-              "turned out",
-              "the cause",
-              "the issue was",
-              "the problem was"
-            ]
-          },
-          {
-            "label": "kept it from coming back",
-            "any": [
-              "test",
-              "prevent",
-              "never again",
-              "added a check"
-            ]
-          }
-        ]
-      }
-    ],
     "Customer focus": [
       {
         "id": "cust-1",
@@ -2794,6 +2866,141 @@
               "accountable",
               "explain it"
             ]
+          }
+        ]
+      }
+    ],
+    "Debugging": [
+      {
+        "id": "debug-1",
+        "q": "Tell me about the hardest bug you've fixed. How did you track it down?",
+        "points": [
+          {
+            "label": "reproduced it",
+            "any": [
+              "reproduce",
+              "repro"
+            ],
+            "follow_up": "How did you get the bug to happen reliably?"
+          },
+          {
+            "label": "narrowed it down",
+            "any": [
+              "isolat",
+              "narrow",
+              "binary search",
+              "bisect",
+              "print",
+              "log",
+              "debugger"
+            ],
+            "follow_up": "How did you narrow down where it was?"
+          },
+          {
+            "label": "found the root cause",
+            "any": [
+              "root cause",
+              "turned out",
+              "the cause",
+              "the issue was",
+              "the problem was"
+            ],
+            "follow_up": "What turned out to be the actual cause?"
+          },
+          {
+            "label": "kept it from coming back",
+            "any": [
+              "test",
+              "prevent",
+              "never again",
+              "added a check"
+            ],
+            "follow_up": "What did you do so it wouldn't come back?"
+          }
+        ]
+      }
+    ],
+    "Problem solving": [
+      {
+        "id": "solve-1",
+        "star": true,
+        "q": "Tell me about a hard problem where your first approach didn't work. What did you do next?",
+        "points": [
+          {
+            "label": "what you tried first and why you changed course",
+            "any": [
+              "first",
+              "tried",
+              "didn't work",
+              "did not work",
+              "switched",
+              "changed",
+              "another approach",
+              "different approach",
+              "instead"
+            ],
+            "follow_up": "What did you try first, and what made you change course?"
+          }
+        ]
+      }
+    ],
+    "Scripting/automation": [
+      {
+        "id": "auto-1",
+        "q": "Tell me about something you automated with a script. What did it replace, and how did you make it safe to run again?",
+        "points": [
+          {
+            "label": "what the script did and in what language",
+            "any": [
+              "python",
+              "bash",
+              "shell",
+              "powershell",
+              "script",
+              "cron",
+              "javascript",
+              "node"
+            ],
+            "follow_up": "What did the script do, and what did you write it in?"
+          },
+          {
+            "label": "what it saved",
+            "any": [
+              "saved",
+              "hours",
+              "minutes",
+              "manual",
+              "by hand",
+              "instead of"
+            ],
+            "number": true,
+            "follow_up": "How much time or effort did it save?"
+          },
+          {
+            "label": "handles errors",
+            "any": [
+              "error",
+              "fail",
+              "log",
+              "retry",
+              "exception",
+              "check"
+            ],
+            "follow_up": "What happens when one step fails halfway?"
+          },
+          {
+            "label": "safe to run again",
+            "any": [
+              "idempoten",
+              "re-run",
+              "rerun",
+              "dry run",
+              "dry-run",
+              "twice",
+              "again",
+              "overwrite"
+            ],
+            "follow_up": "What happens if someone runs it twice?"
           }
         ]
       }

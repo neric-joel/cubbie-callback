@@ -10,7 +10,8 @@ Run from the Skill folder:
 Add --sample to any command to use the bundled example (no network, separate saved state).
 
 Output is JSON. Exit codes: 0 ok, 1 unexpected error, 2 missing or bad input, 3 no posting found, 4 several possible
-postings, 5 job board unreachable, 6 posting closed and no saved copy, 7 no saved interview, 8 every question asked.
+postings, interviews or questions, 5 job board unreachable, 6 posting closed and no saved copy, 7 no saved interview,
+8 every question asked, 9 another command is still running.
 """
 
 from __future__ import annotations
@@ -26,15 +27,15 @@ import traceback
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import NoReturn
+from typing import Iterator, NoReturn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import boards  # noqa: E402
 import coach  # noqa: E402
 
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
-EXIT = {"error": 1, "busy": 1, "bad_input": 2, "board_only": 2, "not_found": 3, "no_intern": 3, "ambiguous": 4, "unreachable": 5, "closed": 6,
-        "no_interview": 7, "done": 8}
+EXIT = {"error": 1, "bad_input": 2, "board_only": 2, "not_found": 3, "no_intern": 3, "ambiguous": 4,
+        "unreachable": 5, "closed": 6, "no_interview": 7, "done": 8, "busy": 9}
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}$")
 LIMIT = 7800  # Cubbie reads the first 8,000 characters of output
 
@@ -45,11 +46,16 @@ class Stop(Exception):
         self.kind, self.message, self.next, self.extra = kind, message, nxt, extra
 
 
+class Help(Exception):
+    """--help, answered as JSON like everything else."""
+
+
 def _shrink(x, chars, items):
     if isinstance(x, str):
         return x[:chars] + "..." if len(x) > chars else x
     if isinstance(x, list):
-        return [_shrink(i, chars, items) for i in x[:items]] + ([f"... {len(x) - items} more"] if len(x) > items else [])
+        more = [f"... {len(x) - items} more"] if len(x) > items else []
+        return [_shrink(i, chars, items) for i in x[:items]] + more
     if isinstance(x, dict):
         return {k: _shrink(v, chars, items) for k, v in x.items()}
     return x
@@ -72,7 +78,7 @@ def emit(data: dict, code: int = 0) -> NoReturn:
     sys.exit(code)
 
 
-def now():
+def now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
@@ -93,6 +99,15 @@ def state_dir(sample: bool) -> Path:
     return d
 
 
+def _migrate(rec):
+    """Older records kept one waiting question in pending_question; now any number wait, in order, in pending."""
+    old = rec.pop("pending_question", None)
+    pending = rec.setdefault("pending", [])
+    if old and old not in pending:
+        pending.append(old)
+    return rec
+
+
 def all_records(sd: Path) -> list[dict]:
     recs = []
     for f in (sd / "interviews").glob("*.json"):
@@ -101,11 +116,11 @@ def all_records(sd: Path) -> list[dict]:
         except (ValueError, OSError):
             continue
         if isinstance(rec, dict) and isinstance(rec.get("posting"), dict) and rec.get("id"):
-            recs.append(rec)
+            recs.append(_migrate(rec))
     return sorted(recs, key=lambda r: (r.get("updated_ts", 0), r.get("updated_at", "")), reverse=True)
 
 
-def record_path(sd, rid):
+def record_path(sd: Path, rid: str | None) -> Path:
     if not ID_RE.fullmatch(rid or ""):
         raise Stop("bad_input", f"'{rid}' is not an interview id", "Run list and use one of its ids.")
     return sd / "interviews" / f"{rid}.json"
@@ -116,7 +131,7 @@ def load(sd: Path, rid: str | None) -> dict:
         f = record_path(sd, rid)
         if not f.exists():
             raise Stop("no_interview", f"no saved interview '{rid}'", "Run list to see saved interviews.")
-        return json.loads(f.read_text(encoding="utf-8"))
+        return _migrate(json.loads(f.read_text(encoding="utf-8")))
     recs = all_records(sd)
     if not recs:
         raise Stop("no_interview", "no saved interview yet", "Run fetch first with the job link or company and role.")
@@ -133,12 +148,13 @@ def save(sd: Path, rec: dict) -> None:
     rec["updated_ts"] = _LAST_TS[0] = max(time.time(), newest + 1e-6)
     f = record_path(sd, rec["id"])
     tmp = f.with_name(f".{f.stem}.{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
+    # errors="replace": a stray surrogate from a job board must never stop the save
+    tmp.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8", errors="replace")
     os.replace(tmp, f)  # never leave a half-written record behind
 
 
 @contextmanager
-def locked(sd):
+def locked(sd: Path) -> Iterator[None]:
     """One command at a time per state folder, so two runs can't overwrite each other's changes."""
     fh = open(sd / ".lock", "a+")
     try:
@@ -160,15 +176,16 @@ def locked(sd):
         fh.close()
 
 
-def find_existing(sd, posting, link=None):
+def find_existing(sd: Path, posting: dict | None, link: str | None = None) -> dict | None:
     for r in all_records(sd):
         p = r["posting"]
-        if (link and r.get("link") == link) or (posting and p.get("source_url") and p["source_url"] == posting.get("source_url")):
+        if (link and r.get("link") == link) or \
+                (posting and p.get("source_url") and p["source_url"] == posting.get("source_url")):
             return r
     return None
 
 
-def new_id(sd, posting):
+def new_id(sd: Path, posting: dict) -> str:
     base = f"{coach.slug(posting['company'], 20)}-{coach.slug(posting['title'], 30)}"
     rid, n = base, 2
     while (sd / "interviews" / f"{rid}.json").exists():
@@ -178,10 +195,12 @@ def new_id(sd, posting):
 
 def build_record(sd: Path, posting: dict, link: str | None, when: str | None, existing: dict | None = None,
                  place: str | None = None) -> dict:
-    rec = existing or {"id": new_id(sd, posting), "created_at": now(), "asked": [], "questions": {}, "scores": []}
+    rec = existing or {"id": new_id(sd, posting), "created_at": now(), "asked": [], "questions": {}, "scores": [],
+                       "pending": []}
     place = place or rec.get("place")
     prefer = (lambda line: boards.location_matches(place, line)) if place else None
-    rec.update({"link": link or rec.get("link"), "posting": posting, "skills": coach.extract(posting["lines"], posting["company"]),
+    rec.update({"link": link or rec.get("link"), "posting": posting,
+                "skills": coach.extract(posting["lines"], posting["company"]),
                 "facts": coach.facts(posting["lines"], prefer),
                 "keywords": coach.posting_keywords(posting["lines"], posting["company"], title=posting["title"])})
     if place:
@@ -205,18 +224,21 @@ def summary(rec: dict, status: str) -> dict:
     return out
 
 
-# ---------------------------------------------------------------- commands
+# ---------------------------------------------------------------- fetch
 
 NEXT = {
     "bad_input": "Ask the student for the job link, or the company and exact role title.",
     "not_found": "Search the web for the posting and run fetch --url with it, or ask the student for the link.",
-    "ambiguous": "Send the student up to three candidate links (each on its own line) and ask which; then run fetch --url.",
+    "ambiguous": "Send the student up to three candidate links (each on its own line) and ask which; then run "
+                 "fetch --url.",
     "unreachable": "Read the job page with the web ability, save the text to a file, and run fetch --text-file.",
-    "closed": "The posting is gone. Ask the student to paste the description or send a screenshot, then use --text-file.",
+    "closed": "The posting is gone. Ask the student to paste the description or send a screenshot, then use "
+              "--text-file.",
     "board_only": "Ask which role they're interviewing for, then run fetch --url <same link> --role \"<role>\".",
     "no_intern": "Tell the student there's no open intern posting like that right now (postings often close once "
                  "interviews start). Ask for the link from their application or a screenshot of the posting, or "
                  "offer the closest posting below.",
+    "busy": "Try again in a few seconds.",
 }
 
 
@@ -226,6 +248,22 @@ def _ambiguous(company, role, cands, location=None):
     return Stop("ambiguous", f"several {company} postings could match '{role}'", NEXT["ambiguous"],
                 candidates=[{"n": i + 1, "title": c["title"], "location": c.get("location"), "url": c["url"],
                              "match": c["score"]} for i, c in enumerate(shown)])
+
+
+def _location_note(place, pick, posting):
+    """What to tell the student when the posting's listed office isn't the place they named."""
+    if boards.location_matches(place, pick.get("location")) or boards.location_matches(place, posting.get("location")):
+        return None
+    shown = place[:1].upper() + place[1:]
+    n = boards.place_line(place, posting["lines"])
+    if n:
+        return f"{shown} is one of this posting's locations (line {n})."
+    where = pick.get("location") or "an unlisted place"
+    multi = boards.multi_site_line(posting["lines"])
+    if multi:
+        return (f"This posting lists {where}, but it says it covers several US sites (line {multi}); ask the "
+                f"recruiter whether {shown} is one of them.")
+    return f"No {shown} posting for this role; this one is in {where}."
 
 
 def _from_candidates(sd, a, cands, company):
@@ -247,78 +285,98 @@ def _from_candidates(sd, a, cands, company):
                      and (boards.is_us(c.get("location")) or not boards.is_us(pick.get("location")))})
     if others:
         out["other_offices"] = others[:8]
-    if a.location and not boards.location_matches(a.location, pick.get("location")) and \
-            not boards.location_matches(a.location, posting.get("location")):
-        out["location_note"] = f"No {a.location} posting for this role; this one is in {pick.get('location') or 'an unlisted place'}."
-    elif not a.location and pick.get("location") and not boards.is_us(pick.get("location")):
-        out["location_note"] = (f"This posting is in {pick['location']}. If the interview is for another office, "
-                                "ask for that posting's link.")
+    note = _location_note(a.location, pick, posting) if a.location else None
+    if not a.location and pick.get("location") and not boards.is_us(pick.get("location")):
+        note = (f"This posting is in {pick['location']}. If the interview is for another office, ask for that "
+                "posting's link.")
+    if note:
+        out["location_note"] = note
     out["next"] = ("Tell the student which posting you used (office, and the link on its own line) so they can correct "
                    "it. " + out["next"])
     return out
 
 
+def _fetch_sample(a, sd):
+    d = json.loads((ASSETS / "sample_posting.json").read_text(encoding="utf-8"))
+    posting = boards.posting_from_greenhouse(d, "saguaropay")
+    rec = build_record(sd, posting, posting["source_url"], a.when or "Thu Oct 29, 2:00 PM (sample)",
+                       find_existing(sd, posting))
+    save(sd, rec)
+    return summary(rec, "fetched")
+
+
+def _clean_link(url):
+    try:
+        return boards.clean_url(url) if url else url
+    except boards.BoardError:
+        return url
+
+
+def _fetch_text(a, sd):
+    if not (a.company and a.role):
+        raise Stop("bad_input", "--text-file needs --company and --role", "Ask the student for the company and role.")
+    lines = boards.text_to_lines(read_file(a.text_file, "posting text"))
+    if len(lines) < 3:
+        raise Stop("bad_input", "the posting text is nearly empty", "Read the job page again or ask for a screenshot.")
+    source = _clean_link(a.source_url)
+    try:
+        posting = boards._posting("pasted", a.company, a.role, a.location, source or "", lines)
+    except boards.BoardError as e:
+        raise Stop("bad_input", e.message, "Read the job page again or ask for a screenshot.")
+    rec = build_record(sd, posting, source, a.when, find_existing(sd, posting, source), a.location)
+    save(sd, rec)
+    return summary(rec, "from_text")
+
+
+def _fetch_url(a, sd):
+    try:
+        link, url = boards.parse_link(a.url), boards.clean_url(a.url)  # a user:password@ part is never saved
+    except boards.BoardError as e:
+        raise Stop(e.kind, e.message, NEXT[e.kind])
+    if link["board"] in ("greenhouse", "lever", "ashby") and link.get("job_id") is None:
+        if not a.role:
+            raise Stop("bad_input", f"that link is {boards.pretty_company(link['slug'])}'s whole job board, "
+                                    "not one posting", NEXT["board_only"])
+        try:
+            cands = boards.list_board(link, a.role)
+        except boards.BoardError as e:
+            raise Stop(e.kind, e.message, NEXT.get(e.kind, ""))
+        return _from_candidates(sd, a, cands, a.company or boards.pretty_company(link["slug"]))
+    existing = find_existing(sd, None, url)
+    try:
+        posting = boards.fetch_link(link, a.company)
+    except boards.BoardError as e:
+        if e.kind == "closed" and existing:
+            existing["closed_at"] = existing.get("closed_at") or now()
+            save(sd, existing)
+            out = summary(existing, "closed_using_saved_copy")
+            out["note"] = f"The posting is closed now; using the copy saved {existing['posting']['fetched_at'][:10]}."
+            return out
+        raise Stop(e.kind, e.message, NEXT.get(e.kind, ""))
+    rec = build_record(sd, posting, url, a.when, existing or find_existing(sd, posting))
+    save(sd, rec)
+    return summary(rec, "fetched")
+
+
+def _fetch_search(a, sd):
+    try:
+        cands = boards.search(a.company, a.role, a.location)
+    except boards.BoardError as e:
+        extra = {"closest": [{"title": c["title"], "location": c.get("location"), "url": c["url"]}
+                             for c in e.candidates]} if e.candidates else {}
+        raise Stop(e.kind, e.message, NEXT.get(e.kind, ""), **extra)
+    return _from_candidates(sd, a, cands, a.company)
+
+
 def cmd_fetch(a: argparse.Namespace, sd: Path) -> dict:
     if a.sample:
-        d = json.loads((ASSETS / "sample_posting.json").read_text(encoding="utf-8"))
-        posting = boards.posting_from_greenhouse(d, "saguaropay")
-        rec = build_record(sd, posting, posting["source_url"], a.when or "Thu Oct 29, 2:00 PM (sample)",
-                           find_existing(sd, posting))
-        save(sd, rec)
-        return summary(rec, "fetched")
-
+        return _fetch_sample(a, sd)
     if a.text_file:
-        if not (a.company and a.role):
-            raise Stop("bad_input", "--text-file needs --company and --role", "Ask the student for the company and role.")
-        lines = boards.text_to_lines(read_file(a.text_file, "posting text"))
-        if len(lines) < 3:
-            raise Stop("bad_input", "the posting text is nearly empty", "Read the job page again or ask for a screenshot.")
-        try:
-            posting = boards._posting("pasted", a.company, a.role, a.location, a.source_url or "", lines)
-        except boards.BoardError as e:
-            raise Stop("bad_input", e.message, "Read the job page again or ask for a screenshot.")
-        rec = build_record(sd, posting, a.source_url, a.when, find_existing(sd, posting, a.source_url), a.location)
-        save(sd, rec)
-        return summary(rec, "from_text")
-
+        return _fetch_text(a, sd)
     if a.url:
-        try:
-            link = boards.parse_link(a.url)
-        except boards.BoardError as e:
-            raise Stop(e.kind, e.message, NEXT[e.kind])
-        if link["board"] in ("greenhouse", "lever", "ashby") and link.get("job_id") is None:
-            if not a.role:
-                raise Stop("bad_input", f"that link is {boards.pretty_company(link['slug'])}'s whole job board, "
-                                        "not one posting", NEXT["board_only"])
-            try:
-                cands = boards.list_board(link, a.role)
-            except boards.BoardError as e:
-                raise Stop(e.kind, e.message, NEXT.get(e.kind, ""))
-            return _from_candidates(sd, a, cands, a.company or boards.pretty_company(link["slug"]))
-        existing = find_existing(sd, None, a.url)
-        try:
-            posting = boards.fetch_link(link, a.company)
-        except boards.BoardError as e:
-            if e.kind == "closed" and existing:
-                existing["closed_at"] = existing.get("closed_at") or now()
-                save(sd, existing)
-                out = summary(existing, "closed_using_saved_copy")
-                out["note"] = f"The posting is closed now; using the copy saved {existing['posting']['fetched_at'][:10]}."
-                return out
-            raise Stop(e.kind, e.message, NEXT.get(e.kind, ""))
-        rec = build_record(sd, posting, a.url, a.when, existing or find_existing(sd, posting))
-        save(sd, rec)
-        return summary(rec, "fetched")
-
+        return _fetch_url(a, sd)
     if a.company and a.role:
-        try:
-            cands = boards.search(a.company, a.role, a.location)
-        except boards.BoardError as e:
-            extra = {"closest": [{"title": c["title"], "location": c.get("location"), "url": c["url"]}
-                                 for c in e.candidates]} if e.candidates else {}
-            raise Stop(e.kind, e.message, NEXT.get(e.kind, ""), **extra)
-        return _from_candidates(sd, a, cands, a.company)
-
+        return _fetch_search(a, sd)
     raise Stop("bad_input", "give --url, or --company and --role, or --text-file", "Ask the student for the job link.")
 
 
@@ -328,20 +386,47 @@ def cmd_brief(a: argparse.Namespace, sd: Path) -> dict:
         rec["when"] = a.when
     out_path = sd / "briefs" / f"{rec['id']}.md"
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(coach.brief_markdown(rec), encoding="utf-8")
+    out_path.write_text(coach.brief_markdown(rec), encoding="utf-8", errors="replace")
     save(sd, rec)
-    return {"ok": True, "id": rec["id"], "brief_path": str(out_path), "headline": coach.headline(rec),
-            "texts": coach.brief_texts(rec),
-            "next": "Turn brief_path into a PDF or Google Doc (the brief first, the numbered posting after) and send "
-                    "it after these texts."}
+    out = {"ok": True, "id": rec["id"], "brief_path": str(out_path), "headline": coach.headline(rec),
+           "texts": coach.brief_texts(rec), "ask_them": coach.ask_them(rec),
+           "next": "Turn brief_path into a PDF or Google Doc (the brief first, the numbered posting after) and send "
+                   "it after these texts."}
+    options = coach.language_options(rec["skills"])
+    if options:
+        out["language_options"] = options
+        out["next"] += (" The posting accepts any one of " + ", ".join(options) + ": ask the student once which "
+                        "they'll interview in, then use question --term <that language>.")
+    return out
+
+
+# ---------------------------------------------------------------- questions
+
+def _weak(row):
+    """An answer worth redoing: points missed, only key words, or hedged."""
+    return row["covered"] < row["total"] or row.get("verdict") == "key words only" or bool(row.get("hedged"))
+
+
+def _best(rows):
+    """The best of these score rows (a later one wins a tie), or None."""
+    best = None
+    for s in rows:
+        key = (s["covered"] / (s["total"] or 1), not _weak(s))
+        if best is None or key >= (best["covered"] / (best["total"] or 1), not _weak(best)):
+            best = s
+    return best
 
 
 def _best_scores(rec):
-    best = {}
+    by_question = {}
     for s in rec.get("scores", []):
-        if s["question_id"] not in best or s["covered"] / s["total"] > best[s["question_id"]]["covered"] / best[s["question_id"]]["total"]:
-            best[s["question_id"]] = s
-    return best
+        by_question.setdefault(s["question_id"], []).append(s)
+    return {qid: _best(rows) for qid, rows in by_question.items()}
+
+
+def _stop_waiting(rec, qid):
+    if qid in rec.setdefault("pending", []):
+        rec["pending"].remove(qid)
 
 
 def cmd_question(a: argparse.Namespace, sd: Path) -> dict:
@@ -353,7 +438,7 @@ def cmd_question(a: argparse.Namespace, sd: Path) -> dict:
         if a.question_id:
             qid = a.question_id
         else:
-            weak = sorted((s for s in best.values() if s["covered"] < s["total"]), key=lambda s: s["covered"] / s["total"])
+            weak = sorted((s for s in best.values() if _weak(s)), key=lambda s: s["covered"] / (s["total"] or 1))
             if not weak:
                 raise Stop("done", "every answered question already covered all its points",
                            "Offer a new question (run question without --retry) or wrap up.")
@@ -372,15 +457,20 @@ def cmd_question(a: argparse.Namespace, sd: Path) -> dict:
     rec.setdefault("asked", [])
     if q["id"] not in rec["asked"]:
         rec["asked"].append(q["id"])
-    rec.setdefault("questions", {})[q["id"]] = {k: q[k] for k in ("id", "question", "term", "line", "quote", "points")}
-    rec["pending_question"] = q["id"]
-    rec.pop("follow_up", None)  # a new question (or a redo) replaces any open follow-up
+    rec.setdefault("questions", {})[q["id"]] = {k: q.get(k) for k in ("id", "question", "term", "line", "quote",
+                                                                      "points", "wrong")}
+    follow = rec.pop("follow_up", None)  # a new question (or a redo) replaces any open follow-up
+    if follow and follow["question_id"] != q["id"]:
+        _stop_waiting(rec, follow["question_id"])  # it only waited for that follow-up
+    _stop_waiting(rec, q["id"])
+    rec["pending"].append(q["id"])
     rec["tone"] = tone
     save(sd, rec)
     out = {"ok": True, "id": rec["id"], "question_id": q["id"], "question": q["question"], "term": q["term"],
            "why": q["why"], "tone": tone, "call_script": q["call_script"], "text_version": q["text_version"],
            "listening_for": [p["label"] for p in q["points"]],
-           "score_command": f"python3 scripts/callback.py score --id {rec['id']} --question-id {q['id']} --answer-file <file>",
+           "score_command": f"python3 scripts/callback.py score --id {rec['id']} --question-id {q['id']} "
+                            "--answer-file <file>",
            "next": "Ask it now by text, or put call_script and text_version word for word into a scheduled call. "
                    "When the answer arrives, run score_command."}
     if retry_of:
@@ -388,24 +478,44 @@ def cmd_question(a: argparse.Namespace, sd: Path) -> dict:
     return out
 
 
+# ---------------------------------------------------------------- scoring
+
+def _waiting_text(rec, qid):
+    follow = rec.get("follow_up") or {}
+    if follow.get("question_id") == qid and follow.get("text"):
+        return follow["text"]
+    return ((rec.get("questions") or {}).get(qid) or {}).get("question")
+
+
 def _answer_target(a, sd):
     """The interview and question an answer (or a --credit) belongs to."""
-    waiting = [] if a.id else [r for r in all_records(sd) if r.get("pending_question")]
-    if len(waiting) > 1 and not a.credit:
-        raise Stop("ambiguous", "several interviews are waiting for an answer",
-                   "Ask the student which one this answer is for, then pass --id.",
-                   candidates=[{"id": r["id"], "company": r["posting"]["company"], "title": r["posting"]["title"],
-                                "question": (r.get("questions") or {}).get(r["pending_question"], {}).get("question")}
-                               for r in waiting[:4]])
-    if a.credit and not a.id:
+    if a.credit:
         # a credit belongs to the answer just scored, wherever other questions are still waiting
-        scored = [r for r in all_records(sd) if r.get("scores")]
-        rec = max(scored, key=lambda r: r["scores"][-1]["at"]) if scored else load(sd, None)
+        if a.id:
+            rec = load(sd, a.id)
+        else:
+            scored = [r for r in all_records(sd) if r.get("scores")]
+            rec = max(scored, key=lambda r: r["scores"][-1]["at"]) if scored else load(sd, None)
+        qid = a.question_id or rec.get("last_question")
     else:
+        waiting = [] if a.id else [r for r in all_records(sd) if r.get("pending")]
+        if a.question_id and len(waiting) > 1:
+            waiting = [r for r in waiting if a.question_id in r["pending"]] or waiting
+        if len(waiting) > 1:
+            raise Stop("ambiguous", "several interviews are waiting for an answer",
+                       "Ask the student which one this answer is for, then pass --id.",
+                       candidates=[{"id": r["id"], "company": r["posting"]["company"],
+                                    "title": coach.spoken_title(r["posting"]["title"]),
+                                    "question": _waiting_text(r, r["pending"][0])} for r in waiting[:4]])
         rec = waiting[0] if waiting else load(sd, a.id)
-    qid = a.question_id or rec.get("pending_question")
-    if a.credit and not a.question_id and rec.get("last_question"):
-        qid = rec["last_question"]
+        pending = rec.get("pending") or []
+        if not a.question_id and len(pending) > 1:
+            raise Stop("ambiguous", "several questions are waiting for an answer",
+                       "Match the answer to the waiting question it is about and run score again with "
+                       "--question-id; if you can't tell, ask the student which question it answers.",
+                       id=rec["id"], candidates=[{"question_id": qid, "question": _waiting_text(rec, qid)}
+                                                 for qid in pending[:6]])
+        qid = a.question_id or (pending[0] if pending else None)
     q = (rec.get("questions") or {}).get(qid or "")
     if not q:
         raise Stop("bad_input", "no question is waiting for an answer",
@@ -427,97 +537,151 @@ def _read_answer(a):
     return answer
 
 
-def cmd_score(a: argparse.Namespace, sd: Path) -> dict:
-    rec, qid, q = _answer_target(a, sd)
-    if a.credit:
-        return _credit(sd, rec, qid, a.credit)
-    follow = rec.get("follow_up") if not a.question_id or a.question_id == (rec.get("follow_up") or {}).get("question_id") else None
-    if follow and follow.get("question_id") == qid:
-        q = dict(q, points=[p for p in q["points"] if p["label"] in follow["points"]])
-    else:
-        follow = None
-    answer = _read_answer(a)
-    before = None if follow else _best_scores(rec).get(qid)
-    result = coach.score_answer(q, answer)
-    if follow:
-        # The follow-up answers part of the same question: fold what it covered into that question's last score.
-        result["tips"] = []
-        result["follow_up_of"] = qid
-        row = next((s for s in reversed(rec.get("scores", [])) if s["question_id"] == qid), None)
-        got = [p["point"] for p in result["points"] if p["covered"]]
-        if row and got:
-            row["after_hint"] = sorted(set(row.get("after_hint", [])) | {g for g in got if g in row["missed"]})
-    else:
-        rec.setdefault("scores", []).append({"at": now(), "question_id": qid, "covered": result["covered"],
-                                             "total": result["total"], "verdict": result["verdict"],
-                                             "missed": result["missed"]})
-    if rec.get("pending_question") == qid:  # another question may still be waiting; it keeps waiting
-        rec.pop("pending_question", None)
-    if (rec.get("follow_up") or {}).get("question_id") == qid:
-        rec.pop("follow_up", None)
-    rec["last_question"] = qid
-    head = f"{result['covered']}/{result['total']} key points: {result['verdict']}."
-    if result["verdict"] == "key words only":
-        head = f"{result['covered']}/{result['total']} key points, but only as key words. Say how and why, in about a minute."
-    if follow:
-        row = next((s for s in reversed(rec.get("scores", [])) if s["question_id"] == qid), None)
-        if not result["missed"] and row:
-            head = (f"Follow-up: got it. That's {row['covered']}/{row['total']} on your own, "
-                    f"+{len(row.get('after_hint', []))} after the hint. A redo without the hint is the real test.")
-        else:
-            head = "Follow-up: got it." if not result["missed"] else "Follow-up: not quite."
+def _follow_up_text(q, label):
+    """The tough interviewer's follow-up on a missed point: the point's own question, or a neutral one."""
+    point = next((p for p in q["points"] if p["label"] == label), {})
+    return "Follow-up: " + (point.get("follow_up") or
+                            f"one part your answer didn't get to is \"{label}\". Can you add that now?")
+
+
+def _head(covered, total, verdict, before=None):
     if before:
-        head = f"{before['covered']}/{before['total']} last time, {result['covered']}/{result['total']} now: {result['verdict']}."
-        result["progress"] = f"{before['covered']}/{before['total']} -> {result['covered']}/{result['total']}"
+        return f"{before['covered']}/{before['total']} last time, {covered}/{total} now: {verdict}."
+    if verdict == "key words only":
+        return f"{covered}/{total} key points, but only as key words. Say how and why, in about a minute."
+    return f"{covered}/{total} key points: {verdict}."
+
+
+def _card(q, head, missed, tips, follow_text=None):
+    """The scorecard texts: verdict, covered, missed (with the posting line behind it), tips, then the follow-up."""
+    hit = [p["label"] for p in q["points"] if p["label"] not in missed]
     texts = [head]
-    hit = [p["point"] for p in result["points"] if p["covered"]]
     if hit:
         texts.append("Covered: " + "; ".join(hit) + ".")
-    if result["missed"]:
-        cited = next((p["cite"] for p in result["points"] if not p["covered"] and p.get("cite")), None)
+    if missed:
+        cited = next((p["cite"] for p in q["points"] if p["label"] in missed and p.get("cite")), None)
         if cited:
             cite = f" The posting says \"{cited['quote']}\" (line {cited['line']})."
         elif q.get("term") and q.get("line"):
             cite = f" The posting asks for {q['term']} on line {q['line']}."
         else:
             cite = ""
-        texts.append("Missed: " + "; ".join(result["missed"]) + "." + cite)
-        if rec.get("tone") == "tough" and not follow:
-            result["follow_up"] = f"Follow-up: you didn't cover {result['missed'][0]}. How would you handle that here?"
-            texts.append(result["follow_up"])
-            rec["follow_up"] = {"question_id": qid, "points": result["missed"][:1]}
-            rec["pending_question"] = qid
+        texts.append("Missed: " + "; ".join(missed) + "." + cite)
+    texts += list(tips)[:2]
+    if follow_text:
+        texts.append(follow_text)  # last, so the student answers it
+    return texts
+
+
+def _score_full(rec, qid, q, answer):
+    before = _best_scores(rec).get(qid)
+    result = coach.score_answer(q, answer)
+    rec.setdefault("scores", []).append({"at": now(), "question_id": qid, "covered": result["covered"],
+                                         "total": result["total"], "verdict": result["verdict"],
+                                         "missed": result["missed"], "words": result["words"],
+                                         "hedged": result["hedged"], "list_like": result["list_like"],
+                                         "tips": result["tips"][:2]})
+    if before:
+        result["progress"] = f"{before['covered']}/{before['total']} -> {result['covered']}/{result['total']}"
+    follow_text = None
+    if rec.get("tone") == "tough" and result["missed"]:
+        old = rec.get("follow_up")
+        if old and old["question_id"] != qid:
+            _stop_waiting(rec, old["question_id"])  # one open follow-up at a time; the older one is dropped
+        follow_text = result["follow_up"] = _follow_up_text(q, result["missed"][0])
+        rec["follow_up"] = {"question_id": qid, "points": result["missed"][:1], "text": follow_text}
+    head = _head(result["covered"], result["total"], result["verdict"], before)
+    return result, _card(q, head, result["missed"], result["tips"], follow_text)
+
+
+def _score_follow_up(rec, qid, q, answer, follow):
+    """The reply to a follow-up grades only the point it asked about, and is credited "after the hint"."""
+    part = dict(q, points=[p for p in q["points"] if p["label"] in follow["points"]])
+    result = coach.score_answer(part, answer)
+    if result["list_like"]:  # a string of key words doesn't answer the follow-up
+        for p in result["points"]:
+            p.update(covered=False, evidence=None)
+        result["covered"], result["missed"] = 0, [p["point"] for p in result["points"]]
+    result["follow_up_of"] = qid
+    tips = result["misconceptions"] + [t for t in result["tips"] if result["list_like"] and t.startswith("That reads")]
+    result["tips"] = tips
+    row = next((s for s in reversed(rec.get("scores", [])) if s["question_id"] == qid), None)
+    got = [p["point"] for p in result["points"] if p["covered"]]
+    if row and got:
+        row["after_hint"] = sorted(set(row.get("after_hint", [])) | {g for g in got if g in row["missed"]})
+    if result["missed"]:
+        head = "Follow-up: not quite."
+    elif row:
+        head = (f"Follow-up: got it. That's {row['covered']}/{row['total']} on your own, "
+                f"+{len(row.get('after_hint', []))} after the hint. A redo without the hint is the real test.")
+    else:
+        head = "Follow-up: got it."
+    rec.pop("follow_up", None)
+    return result, _card(part, head, result["missed"], tips)
+
+
+def cmd_score(a: argparse.Namespace, sd: Path) -> dict:
+    rec, qid, q = _answer_target(a, sd)
+    if a.credit:
+        return _credit(sd, rec, qid, a.credit)
+    answer = _read_answer(a)
+    follow = rec.get("follow_up") if (rec.get("follow_up") or {}).get("question_id") == qid else None
+    if follow:
+        result, texts = _score_follow_up(rec, qid, q, answer, follow)
+    else:
+        result, texts = _score_full(rec, qid, q, answer)
+    _stop_waiting(rec, qid)  # other waiting questions keep waiting
+    asks_follow_up = (rec.get("follow_up") or {}).get("question_id") == qid
+    if asks_follow_up:
+        rec["pending"].append(qid)  # now it waits for the reply to the follow-up
+    rec["last_question"] = qid
     save(sd, rec)
-    texts += result["tips"][:2]
     nxt = ("Send the texts one by one. Then offer a redo of this question (question --retry) or the next one "
            "(question), each as a scheduled check-in at a time the student picks.")
-    if rec.get("follow_up"):
+    if asks_follow_up:
         nxt = ("Send the texts one by one; the last is a follow-up question. Wait for the student's reply, then run "
                "score again with it (it grades only the follow-up).")
+    if rec["pending"]:
+        nxt += " Still waiting for an answer: " + ", ".join(rec["pending"]) + "."
     result.update({"ok": True, "id": rec["id"], "texts": texts, "next": nxt})
     return result
 
 
 def _credit(sd, rec, qid, label):
-    """Cubbie judged that the answer made a point in other words: record it, so redos and weak spots agree."""
-    last = next((s for s in reversed(rec.get("scores", [])) if s["question_id"] == qid), None)
+    """Cubbie judged that the answer made a point in other words: record it, so redos and weak spots agree, and
+    return the corrected scorecard to send instead of the first one."""
+    rows = [s for s in rec.get("scores", []) if s["question_id"] == qid]
+    last = rows[-1] if rows else None
     match = next((m for m in (last or {}).get("missed", []) if label.lower() in m.lower()), None)
     if not match:
         raise Stop("bad_input", f"'{label}' isn't a missed point of the last answer to {qid}",
                    "Pass part of a missed point's label exactly as score printed it.")
+    q = (rec.get("questions") or {}).get(qid) or {"points": []}
+    core = next((p["label"] for p in q["points"] if p.get("core")), q["points"][0]["label"] if q["points"] else None)
     last["missed"].remove(match)
     last["covered"] += 1
     last["credited"] = last.get("credited", []) + [match]
-    last["verdict"] = coach.verdict_for(last["covered"], last["total"])
-    if rec.get("follow_up", {}).get("question_id") == qid:
-        rec["follow_up"]["points"] = [p for p in rec["follow_up"]["points"] if p != match]
-        if not rec["follow_up"]["points"]:
+    last["verdict"] = coach.verdict_for(last["covered"], last["total"], last.get("words"), bool(last.get("hedged")),
+                                        bool(last.get("list_like")), core in last["missed"])
+    follow, follow_text = rec.get("follow_up"), None
+    if follow and follow.get("question_id") == qid:
+        follow["points"] = [p for p in follow["points"] if p != match]
+        if not follow["points"] and last["missed"]:  # ask about the next missed point instead
+            follow.update(points=last["missed"][:1], text=_follow_up_text(q, last["missed"][0]))
+        if follow["points"]:
+            follow_text = follow.get("text") or _follow_up_text(q, follow["points"][0])
+        else:
             rec.pop("follow_up")
-            rec.pop("pending_question", None)
+            _stop_waiting(rec, qid)
+    head = _head(last["covered"], last["total"], last["verdict"], _best(rows[:-1]))
     save(sd, rec)
     return {"ok": True, "id": rec["id"], "question_id": qid, "credited": match,
-            "score": f"{last['covered']}/{last['total']}", "next": "Tell the student in one line that the point counts."}
+            "score": f"{last['covered']}/{last['total']}", "verdict": last["verdict"],
+            "texts": _card(q, head, last["missed"], last.get("tips", []), follow_text),
+            "next": "Send these texts instead of the ones score printed, one by one."}
 
+
+# ---------------------------------------------------------------- the rest
 
 def cmd_invite(a: argparse.Namespace, sd: Path) -> dict:
     if a.email_file:
@@ -531,18 +695,31 @@ def cmd_invite(a: argparse.Namespace, sd: Path) -> dict:
     return out
 
 
+def _weak_spots(r):
+    spots = set()
+    for s in {x["question_id"]: x for x in r.get("scores", [])}.values():  # each question's latest answer
+        spots |= set(s["missed"])
+        name = ((r.get("questions") or {}).get(s["question_id"]) or {}).get("term") or s["question_id"]
+        if s.get("verdict") == "key words only":
+            spots.add(f"{name} answer: only key words, explain how and why")
+        elif s.get("hedged"):
+            spots.add(f"{name} answer: hedged, commit to what you'd do")
+    return sorted(spots)[:5]
+
+
 def cmd_list(a: argparse.Namespace, sd: Path) -> dict:
     items = []
     for r in all_records(sd):
         last = (r.get("scores") or [None])[-1]
-        items.append({"id": r["id"], "company": r["posting"]["company"], "title": r["posting"]["title"],
-                      "when": r.get("when"), "questions_asked": len(r.get("asked", [])),
-                      "waiting_for_answer": r.get("pending_question"),
+        pending = r.get("pending") or []
+        items.append({"id": r["id"], "company": r["posting"]["company"],
+                      "title": coach.spoken_title(r["posting"]["title"]), "when": r.get("when"),
+                      "questions_asked": len(r.get("asked", [])),
+                      "waiting_for_answer": pending[0] if pending else None, "waiting": pending,
                       "last_score": f"{last['covered']}/{last['total']}" if last else None,
                       "questions": [{"id": qid, "term": (r.get("questions") or {}).get(qid, {}).get("term")}
                                     for qid in r.get("asked", [])],
-                      "weak_spots": sorted({m for s in {x["question_id"]: x for x in r.get("scores", [])}.values()
-                                            for m in s["missed"]})[:5]})
+                      "weak_spots": _weak_spots(r), "ask_them": coach.ask_them(r)})
     return {"ok": True, "interviews": items}
 
 
@@ -553,7 +730,8 @@ def cmd_forget(a: argparse.Namespace, sd: Path) -> dict:
             f.unlink()
         n = sum(1 for f in files if f.suffix == ".json")
         if not a.sample:
-            for f in list((sd / "sample" / "interviews").glob("*.json")) + list((sd / "sample" / "briefs").glob("*.md")):
+            sample = sd / "sample"
+            for f in list((sample / "interviews").glob("*.json")) + list((sample / "briefs").glob("*.md")):
                 f.unlink()
         return {"ok": True, "deleted": f"all saved interviews ({n})"}
     if not a.id:
@@ -579,10 +757,11 @@ class JsonArgs(argparse.ArgumentParser):
     def error(self, message):
         raise Stop("bad_input", f"bad command: {message}", "Check the command against SKILL.md and run it again.")
 
+    def print_help(self, file=None):
+        raise Help(self.format_help())
 
-def main(argv: list[str] | None = None) -> None:
-    boards.DEADLINE = time.monotonic() + 100  # stay well inside the sandbox's 2-minute limit
-    argv = [str(x).encode("utf-8", "replace").decode("utf-8") for x in (sys.argv[1:] if argv is None else argv)]
+
+def _parser():
     common = JsonArgs(add_help=False)
     common.add_argument("--sample", action="store_true", help="use the bundled example; no network; separate state")
     common.add_argument("--id", help="saved interview id (default: the most recent)")
@@ -613,28 +792,42 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("list", parents=[common])
     fg = sub.add_parser("forget", parents=[common])
     fg.add_argument("--all", action="store_true", help="delete every saved interview")
+    return ap
+
+
+HANDLERS = {"fetch": cmd_fetch, "brief": cmd_brief, "question": cmd_question, "score": cmd_score,
+            "invite": cmd_invite, "list": cmd_list, "forget": cmd_forget}
+
+
+def main(argv: list[str] | None = None) -> None:
+    boards.DEADLINE = time.monotonic() + 100  # stay well inside the sandbox's 2-minute limit
+    argv = [str(x).encode("utf-8", "replace").decode("utf-8") for x in (sys.argv[1:] if argv is None else argv)]
     watchdog = threading.Timer(110, _out_of_time)
     watchdog.daemon = True
     watchdog.start()
     try:
-        a = ap.parse_args(argv)
-    except Stop as e:
-        emit({"ok": False, "error": e.kind, "message": e.message, "next": e.next}, EXIT[e.kind])
-    handlers = {"fetch": cmd_fetch, "brief": cmd_brief, "question": cmd_question, "score": cmd_score,
-                "invite": cmd_invite, "list": cmd_list, "forget": cmd_forget}
-    try:
-        sd = state_dir(a.sample)
-        with locked(sd):
-            result = handlers[a.cmd](a, sd)
-        emit(result)
-    except Stop as e:
-        emit({"ok": False, "error": e.kind, "message": e.message, "next": e.next, **e.extra}, EXIT.get(e.kind, 1))
-    except boards.BoardError as e:
-        emit({"ok": False, "error": e.kind, "message": e.message, "next": NEXT.get(e.kind, "")}, EXIT.get(e.kind, 1))
-    except Exception as e:  # never hand Cubbie a traceback
-        emit({"ok": False, "error": "error", "message": f"{type(e).__name__}: {e}",
-              "where": traceback.format_exc(limit=3).splitlines()[-3:],
-              "next": "Tell the student the prep tool hit an error and keep helping from the posting text."}, 1)
+        try:
+            a = _parser().parse_args(argv)
+        except Help as h:
+            emit({"ok": True, "usage": str(h), "next": "Run one of the commands shown."})
+        except Stop as e:
+            emit({"ok": False, "error": e.kind, "message": e.message, "next": e.next}, EXIT[e.kind])
+        try:
+            sd = state_dir(a.sample)
+            with locked(sd):
+                result = HANDLERS[a.cmd](a, sd)
+            emit(result)
+        except Stop as e:
+            emit({"ok": False, "error": e.kind, "message": e.message, "next": e.next, **e.extra}, EXIT.get(e.kind, 1))
+        except boards.BoardError as e:
+            emit({"ok": False, "error": e.kind, "message": e.message, "next": NEXT.get(e.kind, "")},
+                 EXIT.get(e.kind, 1))
+        except Exception as e:  # never hand Cubbie a traceback
+            emit({"ok": False, "error": "error", "message": f"{type(e).__name__}: {e}",
+                  "where": traceback.format_exc(limit=3).splitlines()[-3:],
+                  "next": "Tell the student the prep tool hit an error and keep helping from the posting text."}, 1)
+    finally:
+        watchdog.cancel()
 
 
 if __name__ == "__main__":

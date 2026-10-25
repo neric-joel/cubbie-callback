@@ -65,6 +65,22 @@ class BoardError(Exception):
 
 
 _PUBLIC = {}  # host -> the vetted public IPs we connect to (IPv4 first), or None when the host is private
+LOCAL_NAME = re.compile(r"(^localhost$|\.(localhost|local|internal|intranet|lan|home|corp|home\.arpa)$|^[^.]+$)")
+
+
+def proxy_for(url: str) -> bool:
+    """True when a configured proxy (not bypassed by NO_PROXY) carries this URL."""
+    parts = urllib.parse.urlsplit(url)
+    return bool(urllib.request.getproxies().get(parts.scheme)) and \
+        not urllib.request.proxy_bypass(parts.hostname or "")
+
+
+def _is_ip(host):
+    try:
+        ipaddress.ip_address(host.strip("[]").split("%")[0])
+        return True
+    except ValueError:
+        return False
 
 
 def check_public(url: str) -> list[str]:
@@ -77,6 +93,9 @@ def check_public(url: str) -> list[str]:
         try:
             addrs = [info[4][0] for info in socket.getaddrinfo(host, None)]
         except (socket.gaierror, UnicodeError, ValueError):
+            # Behind a proxy without local DNS the proxy resolves the name; only plain public-looking names pass.
+            if proxy_for(url) and not _is_ip(host) and not LOCAL_NAME.search(host):
+                return []
             raise BoardError("unreachable", f"could not find the website {host}")
         ips = sorted({ipaddress.ip_address(a.split("%")[0]) for a in addrs}, key=lambda ip: ip.version)
         _PUBLIC[host] = [str(ip) for ip in ips] if ips and all(ip.is_global for ip in ips) else None
@@ -144,7 +163,7 @@ def _read_body(resp):
 
 
 def _open(req, timeout):
-    opener = _PROXY_OPENER if urllib.request.getproxies() else _OPENER
+    opener = _PROXY_OPENER if proxy_for(req.full_url) else _OPENER  # NO_PROXY alone is no proxy: stay pinned
     return opener.open(req, timeout=timeout)
 
 
@@ -252,11 +271,33 @@ def _split_long(line, limit=280):
 MAX_HTML = 400_000
 
 
+def utf8(text: str | None) -> str:
+    """The text with lone surrogates (broken emoji in board JSON) replaced, so it can always be saved."""
+    return (text or "").encode("utf-8", "replace").decode("utf-8")
+
+
+def _drop_comments(fragment):
+    """Remove <!-- comments --> in one pass; an unclosed one drops the rest. HTMLParser is quadratic on them."""
+    out, pos = [], 0
+    while True:
+        start = fragment.find("<!--", pos)
+        if start < 0:
+            out.append(fragment[pos:])
+            break
+        out.append(fragment[pos:start])
+        end = fragment.find("-->", start + 4)
+        if end < 0:
+            break
+        pos = end + 3
+    return "".join(out)
+
+
 def html_to_lines(fragment: str | None) -> list[str]:
     """Plain-text lines of an HTML fragment: one per paragraph, list item or heading; long ones split by sentence."""
-    fragment = (fragment or "")[:MAX_HTML]
+    fragment = utf8(fragment)[:MAX_HTML]
     if "&lt;" in fragment:
         fragment = html.unescape(fragment)
+    fragment = _drop_comments(fragment)
     if fragment.count("<") > fragment.count(">") + 20:  # malformed markup makes HTMLParser crawl; strip tags instead
         return text_to_lines(re.sub(r"<[^<>]{0,200}>|<", "\n", fragment))
     parser = _TextParser()
@@ -280,8 +321,9 @@ def html_to_lines(fragment: str | None) -> list[str]:
 
 
 def text_to_lines(text: str | None) -> list[str]:
+    """Plain-text lines of pasted text, bullets normalized to "- "."""
     lines = []
-    for raw in (text or "").splitlines():
+    for raw in utf8(text).splitlines():
         line = re.sub(r"\s+", " ", raw.translate(PUNCT)).strip()
         line = re.sub(r"^[\u2022\u25aa\u25cf\u25e6\u00b7*\u2023\u2043]\s*", "- ", line)
         if line:
@@ -291,22 +333,28 @@ def text_to_lines(text: str | None) -> list[str]:
 
 # ---------------------------------------------------------------- links
 
-def parse_link(url: str) -> dict:
-    """Which board a job link belongs to and the ids needed to fetch it."""
+def clean_url(url: str) -> str:
+    """The link without trailing punctuation or a user:password@ part (never saved or echoed)."""
     url = (url or "").strip().rstrip(".,;:!?)]}>\"'")
     try:
         parts = urllib.parse.urlsplit(url)
     except ValueError:
-        raise BoardError("bad_input", f"not a web link: {url!r}")
+        raise BoardError("bad_input", f"not a web link: {url[:200]!r}")
     if parts.scheme not in ("http", "https") or not parts.netloc:
-        raise BoardError("bad_input", f"not a web link: {url!r}")
-    if parts.username is not None or parts.password is not None:  # https://user:secret@host/...: drop the secret
+        raise BoardError("bad_input", f"not a web link: {url[:200]!r}")
+    if parts.username is not None or parts.password is not None:
         try:
             port = f":{parts.port}" if parts.port else ""
         except ValueError:
             raise BoardError("bad_input", "that link has a broken port number")
-        parts = parts._replace(netloc=f"{parts.hostname or ''}{port}")
-        url = urllib.parse.urlunsplit(parts)
+        url = urllib.parse.urlunsplit(parts._replace(netloc=f"{parts.hostname or ''}{port}"))
+    return url
+
+
+def parse_link(url: str) -> dict:
+    """Which board a job link belongs to and the ids needed to fetch it."""
+    url = clean_url(url)
+    parts = urllib.parse.urlsplit(url)
     host = (parts.hostname or "").lower()
     segs = [s for s in parts.path.split("/") if s]
     query = urllib.parse.parse_qs(parts.query)
@@ -331,10 +379,11 @@ def parse_link(url: str) -> dict:
         return {"board": "ashby", "slug": segs[0], "job_id": segs[1] if len(segs) >= 2 else None}
     site = _eightfold_site(host)
     if site and ("job" in segs or "pid" in query):
-        job_id = query["pid"][0] if "pid" in query else segs[segs.index("job") + 1] if segs.index("job") + 1 < len(segs) else ""
+        after = segs.index("job") + 1
+        job_id = query["pid"][0] if "pid" in query else segs[after] if after < len(segs) else ""
         if job_id.isdigit():
             return {"board": "eightfold", "host": host, "domain": site[1], "job_id": job_id}
-    if host.endswith("oraclecloud.com") and "sites" in segs and "job" in segs:
+    if host.endswith(".oraclecloud.com") and "sites" in segs and "job" in segs:
         site_i, job_i = segs.index("sites") + 1, segs.index("job") + 1
         if site_i < len(segs) and job_i < len(segs) and segs[job_i].isdigit():
             return {"board": "oracle", "host": host, "site": segs[site_i], "job_id": segs[job_i]}
@@ -348,7 +397,7 @@ def parse_link(url: str) -> dict:
             return {"board": "smartrecruiters", "slug": segs[0], "job_id": job_id.group(0)}
     wd = re.match(r"^([a-z0-9-]+)\.(wd\d+)\.myworkdayjobs\.com$", host)
     if wd and "job" in segs:
-        while segs and segs[-1].lower() in ("apply", "applymanually", "autofillwithresume", "useMyLastApplication".lower()):
+        while segs and segs[-1].lower() in ("apply", "applymanually", "autofillwithresume", "usemylastapplication"):
             segs = segs[:-1]
         i = segs.index("job")
         site_segs = [s for s in segs[:i] if not re.match(r"^[a-z]{2}-[A-Z]{2}$", s)]
@@ -365,12 +414,32 @@ def _now():
 MAX_CHARS = 60_000
 
 
+# A name ends at a sentence that goes on in lower case ("Acme. text your password"; "Dept. of Energy" stays) or
+# right before injected instructions.
+NAME_CUT = re.compile(r"(?<=[.!?;])\s+(?=[a-z])(?!(?:of|and|the|for|de|du|la|y|e|&)\b)|"
+                      r"\s(?=(?:SYSTEM|INSTRUCTIONS?)\b)|\s(?=[Ii]gnore\s+(?:all|any|the|previous|prior|above|your)\b)")
+
+
 def clean_name(text: str | None, cap: int) -> str:
     """Company and job names are spoken on calls: keep one short plain phrase, nothing that reads as instructions."""
-    text = re.sub(r"\s+", " ", str(text or "")).strip()
-    text = re.split(r"(?<=[a-z]{3}[.!?;])\s|(?<=[!?;])\s|\s(?=(?:SYSTEM|IGNORE|INSTRUCTIONS?)\b)", text)[0]
-    text = re.sub(r"[^\w &.,'()/+#:@-]", "", text).strip(" .,:;-")
+    text = re.sub(r"\s+", " ", utf8(str(text or ""))).strip()
+    text = NAME_CUT.split(text)[0]
+    text = re.sub(r"[^\w &.,'()/+#:@!-]", "", text).strip(" .,:;-")
     return text[:cap].rstrip()
+
+
+def short_places(text: str, cap: int = 160) -> str:
+    """An office list cut at a "; " boundary with " and N more", never mid-name."""
+    if len(text) <= cap:
+        return text
+    places, kept = text.split("; "), []
+    for place in places:
+        if len("; ".join(kept + [place])) + len(" and 99 more") > cap:
+            break
+        kept.append(place)
+    if not kept:
+        return text[:cap].rsplit(" ", 1)[0]
+    return "; ".join(kept) + f" and {len(places) - len(kept)} more"
 
 
 def _posting(board: str, company: str | None, title: str | None, location: str | None, source_url: str | None,
@@ -383,28 +452,29 @@ def _posting(board: str, company: str | None, title: str | None, location: str |
         if size > MAX_CHARS:
             break
         kept.append(line)
-    posting = {"board": board, "company": clean_name(company, 60), "title": clean_name(title, 100),
-               "location": re.sub(r"[^\w &.,'()/+#:;-]", "", re.sub(r"\s+", " ", str(location or "")))[:160].strip(),
-               "source_url": source_url, "fetched_at": _now(), "lines": kept}
+    location = re.sub(r"[^\w &.,'()/+#:;-]", "", re.sub(r"\s+", " ", utf8(str(location or "")))).strip()
+    posting = {"board": board, "company": clean_name(company, 60), "title": clean_name(title, 140),
+               "location": short_places(location), "source_url": utf8(source_url) if source_url else source_url,
+               "fetched_at": _now(), "lines": kept}
     posting.update(extra or {})
     return posting
 
 
 # ---------------------------------------------------------------- one posting per board
 
-def posting_from_greenhouse(d, slug, company=None):
+def posting_from_greenhouse(d: dict, slug: str, company: str | None = None) -> dict:
     return _posting("greenhouse", d.get("company_name") or company or pretty_company(slug), d.get("title"),
                     (d.get("location") or {}).get("name"), d.get("absolute_url"), html_to_lines(d.get("content")))
 
 
-def fetch_greenhouse(slug, job_id, company=None):
+def fetch_greenhouse(slug: str, job_id: str, company: str | None = None) -> dict:
     status, d = get_json(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs/{job_id}")
     if status in (404, 410) or d is None:
         raise BoardError("closed", f"Greenhouse job {job_id} on board '{slug}' is closed or does not exist")
     return posting_from_greenhouse(d, slug, company)
 
 
-def fetch_lever(slug, job_id, company=None):
+def fetch_lever(slug: str, job_id: str, company: str | None = None) -> dict:
     status, d = get_json(f"https://api.lever.co/v0/postings/{slug}/{job_id}")
     if status in (404, 410) or d is None:
         raise BoardError("closed", f"Lever posting {job_id} on '{slug}' is closed or does not exist")
@@ -412,22 +482,23 @@ def fetch_lever(slug, job_id, company=None):
     for block in d.get("lists") or []:
         body += f"<h3>{block.get('text', '')}</h3><ul>{block.get('content', '')}</ul>"
     body += d.get("additional") or ""
-    return _posting("lever", company or pretty_company(slug), d.get("text"), (d.get("categories") or {}).get("location"),
-                    d.get("hostedUrl"), html_to_lines(body))
+    return _posting("lever", company or pretty_company(slug), d.get("text"),
+                    (d.get("categories") or {}).get("location"), d.get("hostedUrl"), html_to_lines(body))
 
 
-def fetch_ashby(slug, job_id, company=None):
+def fetch_ashby(slug: str, job_id: str, company: str | None = None) -> dict:
     status, d = get_json(f"https://api.ashbyhq.com/posting-api/job-board/{slug}")
     if status in (404, 410) or d is None:
         raise BoardError("not_found", f"no Ashby job board named '{slug}'")
     for job in d.get("jobs") or []:
         if job.get("id") == job_id or (job.get("jobUrl") or "").rstrip("/").endswith(job_id):
-            return _posting("ashby", company or pretty_company(slug), job.get("title"), job.get("location"), job.get("jobUrl"),
-                            html_to_lines(job.get("descriptionHtml")) or text_to_lines(job.get("descriptionPlain")))
+            return _posting("ashby", company or pretty_company(slug), job.get("title"), job.get("location"),
+                            job.get("jobUrl"), html_to_lines(job.get("descriptionHtml")) or
+                            text_to_lines(job.get("descriptionPlain")))
     raise BoardError("closed", f"Ashby job {job_id} is no longer on '{slug}' (closed or unlisted)")
 
 
-def fetch_smartrecruiters(slug, job_id, company=None):
+def fetch_smartrecruiters(slug: str, job_id: str, company: str | None = None) -> dict:
     status, d = get_json(f"https://api.smartrecruiters.com/v1/companies/{slug}/postings/{job_id}")
     if status in (404, 410) or d is None:
         raise BoardError("closed", f"SmartRecruiters posting {job_id} for '{slug}' is closed or does not exist")
@@ -436,7 +507,8 @@ def fetch_smartrecruiters(slug, job_id, company=None):
                    for key in ("companyDescription", "jobDescription", "qualifications", "additionalInformation")
                    for s in [sections.get(key) or {}] if s.get("text"))
     loc = d.get("location") or {}
-    return _posting("smartrecruiters", (d.get("company") or {}).get("name") or company or pretty_company(slug), d.get("name"),
+    return _posting("smartrecruiters", (d.get("company") or {}).get("name") or company or pretty_company(slug),
+                    d.get("name"),
                     ", ".join(x for x in (loc.get("city"), loc.get("region")) if x),
                     d.get("postingUrl") or f"https://jobs.smartrecruiters.com/{slug}/{job_id}", html_to_lines(body))
 
@@ -446,7 +518,7 @@ def _workday_location(info):
     return "; ".join([info.get("location") or ""] + extra).strip("; ")
 
 
-def fetch_workday(slug, wd, site, job_path, company=None):
+def fetch_workday(slug: str, wd: str, site: str, job_path: str, company: str | None = None) -> dict:
     base = f"https://{slug}.{wd}.myworkdayjobs.com"
     status, d = get_json(f"{base}/wday/cxs/{slug}/{site}/{job_path}")
     if status in (404, 410) or d is None:
@@ -476,19 +548,20 @@ def _eightfold_site(host):
     return None
 
 
-def fetch_eightfold(host, domain, job_id, company=None):
+def fetch_eightfold(host: str, domain: str, job_id: str, company: str | None = None) -> dict:
     status, d = get_json(f"https://{host}/api/pcsx/position_details?position_id={job_id}&domain={domain}&hl=en")
     data = (d or {}).get("data") or {}
     if status in (404, 410) or not data.get("jobDescription"):
         raise BoardError("closed", f"posting {job_id} on {host} is closed or does not exist")
     name = (_eightfold_site(host) or (None, None, pretty_company(host.split(".")[0])))[2]
     return _posting("eightfold", company or name, data.get("name"), "; ".join(data.get("locations") or []),
-                    data.get("publicUrl") or f"https://{host}/careers/job/{job_id}", html_to_lines(data["jobDescription"]))
+                    data.get("publicUrl") or f"https://{host}/careers/job/{job_id}",
+                    html_to_lines(data["jobDescription"]))
 
 
 def _list_eightfold(key, role):
     host, domain, _ = EIGHTFOLD_SITES[key]
-    q = urllib.parse.quote(role)
+    q = urllib.parse.quote(query_text(role))  # "SWE intern" and "Software Engineer Intern" search alike
     status, d = get_json(f"https://{host}/api/pcsx/search?domain={domain}&query={q}&location=&start=0&num=20")
     return [{"board": "eightfold", "title": p.get("name"), "location": "; ".join(p.get("locations") or []),
              "url": f"https://{host}/careers/job/{p.get('id')}",
@@ -540,7 +613,7 @@ def _amazon_posting(j, company=None):
                     html_to_lines(body))
 
 
-def fetch_amazon(job_id, company=None):
+def fetch_amazon(job_id: str, company: str | None = None) -> dict:
     status, d = get_json(f"{AMAZON_SEARCH}?base_query={job_id}&result_limit=10")
     for j in (d or {}).get("jobs") or []:
         if str(j.get("id_icims")) == str(job_id):
@@ -615,9 +688,17 @@ def fetch_webpage(url: str, company: str | None = None) -> dict:
             name = text(org.get("name")) if isinstance(org, dict) else text(org)
             body = html_to_lines(text(job.get("description")))
             if body:
-                return _posting("webpage", company or name, text(job.get("title")), where, url, body)
+                return _posting("webpage", company or name or site_company(url), text(job.get("title")), where, url,
+                                body)
     raise BoardError("unreachable", "that page has no machine-readable job description; read it with the web "
                                     "ability and pass the text with --text-file")
+
+
+def site_company(url: str) -> str:
+    """A company name from a career site's address (careers.acme.com -> Acme), for pages that don't name one."""
+    labels = [x for x in (urllib.parse.urlsplit(url).hostname or "").split(".") if x]
+    labels = [x for x in labels[:-1] if x not in ("www", "careers", "jobs", "apply", "boards", "job-boards", "co")]
+    return pretty_company(labels[-1]) if labels else ""
 
 
 def _shape_safe(fn):
@@ -635,7 +716,8 @@ def fetch_link(link: dict, company: str | None = None) -> dict:
     """Fetch one posting from a parsed link (parse_link) or a search candidate's "fetch" dict."""
     board = link["board"]
     if link.get("job_id") is None and board in ("greenhouse", "lever", "ashby"):
-        raise BoardError("board_only", f"that link is {pretty_company(link['slug'])}'s whole job board, not one posting")
+        raise BoardError("board_only", f"that link is {pretty_company(link['slug'])}'s whole job board, "
+                                       "not one posting")
     if board == "greenhouse":
         try:
             return fetch_greenhouse(link["slug"], link["job_id"], company)
@@ -649,7 +731,8 @@ def fetch_link(link: dict, company: str | None = None) -> dict:
         raw = link.get("raw")
         if raw:
             return _posting("ashby", company or pretty_company(link["slug"]), raw.get("title"), raw.get("location"),
-                            raw.get("jobUrl"), html_to_lines(raw.get("descriptionHtml")) or text_to_lines(raw.get("descriptionPlain")))
+                            raw.get("jobUrl"), html_to_lines(raw.get("descriptionHtml")) or
+                            text_to_lines(raw.get("descriptionPlain")))
         return fetch_ashby(link["slug"], link["job_id"], company)
     if board == "smartrecruiters":
         return fetch_smartrecruiters(link["slug"], link["job_id"], company)
@@ -672,9 +755,9 @@ ROLE_EXPANSIONS = {
     "interns": "intern", "internships": "intern", "co": "", "op": "coop", "eng": "engineer", "engineering": "engineer",
     "dev": "develop", "developer": "develop", "development": "develop", "jr": "junior", "sr": "senior",
 }
-ROLE_NOISE = {"summer", "fall", "spring", "winter", "the", "a", "an", "and", "or", "of", "for", "at", "role", "position",
-              "remote", "hybrid", "onsite", "new", "grad", "paid", "evergreen", "person", "required", "citizen",
-              "citizenship", "clearance", "bachelor", "bachelors", "undergraduate", "undergrad", "s"}
+ROLE_NOISE = {"summer", "fall", "spring", "winter", "the", "a", "an", "and", "or", "of", "for", "at", "role",
+              "position", "remote", "hybrid", "onsite", "new", "grad", "paid", "evergreen", "person", "required",
+              "citizen", "citizenship", "clearance", "bachelor", "bachelors", "undergraduate", "undergrad", "s"}
 # Countries and their codes show up in titles ("SDE Intern (USA)", "... - Spain"); they name an office, not a role.
 PLACES = {"us", "usa", "can", "canada", "uk", "gbr", "india", "ind", "zaf", "spain", "esp", "germany", "deu", "ireland",
           "irl", "israel", "isr", "poland", "pol", "mexico", "mex", "brazil", "bra", "singapore", "sgp", "japan", "jpn",
@@ -703,18 +786,26 @@ def same_role(a: str | None, b: str | None) -> bool:
     return normalize_title(a) == normalize_title(b)
 
 
-def pretty_company(slug):
+def pretty_company(slug: str | None) -> str:
     return " ".join(w.capitalize() for w in re.split(r"[-_]", slug or "") if w)
+
+
+def _words(role, title):
+    """(role words, title words); a "Software Development Engineer" is a software engineer unless the role says so."""
+    want, have = normalize_title(role), normalize_title(title)
+    if "develop" not in want:
+        have = [w for w in have if w != "develop"]
+    return want, have
 
 
 def covers(role: str, title: str | None) -> bool:
     """Every word of the role (after normalizing) appears in the title."""
-    want, have = normalize_title(role), normalize_title(title)
+    want, have = _words(role, title)
     return bool(want) and all(w in have for w in want)
 
 
 def title_score(role: str, title: str | None) -> float:
-    want, have = normalize_title(role), normalize_title(title)
+    want, have = _words(role, title)
     if not want or not have:
         return 0.0
     coverage = sum(1 for w in set(want) if w in have) / len(set(want))
@@ -723,7 +814,7 @@ def title_score(role: str, title: str | None) -> float:
     return round(0.5 * coverage + 0.2 * precision + 0.3 * ratio, 3)
 
 
-def slug_candidates(company):
+def slug_candidates(company: str | None) -> list[str]:
     base = re.sub(r"[^a-z0-9 &-]", "", (company or "").lower()).replace("&", "and").strip()
     base = re.sub(r"\b(inc|llc|ltd|corp|corporation|co|company|technologies|labs)\b", "", base).strip()
     words = base.split()
@@ -764,8 +855,10 @@ def _list_smartrecruiters(slug, role):
     if not d:
         return []
     return [{"board": "smartrecruiters", "title": j.get("name"),
-             "url": f"https://jobs.smartrecruiters.com/{slug}/{j.get('id')}", "location": (j.get("location") or {}).get("city"),
-             "fetch": {"board": "smartrecruiters", "slug": slug, "job_id": str(j.get("id"))}} for j in d.get("content") or []]
+             "url": f"https://jobs.smartrecruiters.com/{slug}/{j.get('id')}",
+             "location": (j.get("location") or {}).get("city"),
+             "fetch": {"board": "smartrecruiters", "slug": slug, "job_id": str(j.get("id"))}}
+            for j in d.get("content") or []]
 
 
 def search_text(role: str) -> str:
@@ -773,6 +866,11 @@ def search_text(role: str) -> str:
     words = [w for w in normalize_title(role) if w not in ("intern", "develop")] or normalize_title(role)
     text = " ".join(words)
     return text.strip()
+
+
+def query_text(role: str) -> str:
+    """The role spelled out for a keyword search that ranks by relevance: SWE intern -> software engineer intern."""
+    return " ".join(normalize_title(role)).replace("develop", "development") or role
 
 
 def _workday_post(tenant, wd, site, body):
@@ -832,7 +930,7 @@ ORACLE_API = "/hcmRestApi/resources/latest"
 
 def _list_oracle(key, role):
     host, site, _ = ORACLE_SITES[key]
-    q = urllib.parse.quote(" ".join(normalize_title(role)).replace("develop", "development"))
+    q = urllib.parse.quote(query_text(role))
     status, d = get_json(f"https://{host}{ORACLE_API}/recruitingCEJobRequisitions?onlyData=true&expand=requisitionList"
                          f"&finder=findReqs;siteNumber={site},keyword={q},limit=50")
     items = ((d or {}).get("items") or [{}])[0].get("requisitionList") or []
@@ -841,7 +939,7 @@ def _list_oracle(key, role):
              "fetch": {"board": "oracle", "host": host, "site": site, "job_id": str(r.get("Id"))}} for r in items]
 
 
-def fetch_oracle(host, site, job_id, company=None):
+def fetch_oracle(host: str, site: str, job_id: str, company: str | None = None) -> dict:
     status, d = get_json(f"https://{host}{ORACLE_API}/recruitingCEJobRequisitionDetails?expand=all&onlyData=true"
                          f"&finder=ById;Id=%22{urllib.parse.quote(job_id)}%22,siteNumber={site}")
     items = (d or {}).get("items") or []
@@ -888,15 +986,15 @@ def _without_company(title, company):
     return re.sub(rf"\b(?:{'|'.join(map(re.escape, words))})\b", " ", title or "", flags=re.I)
 
 
-def rank(jobs: list[dict], role: str, location: str | None = None, limit: int = 5,
-         company: str | None = None) -> list[dict]:
+def rank(jobs: list[dict], role: str, location: str | None = None, company: str | None = None) -> list[dict]:
+    """Postings sorted for a role (best title first, the same role's other offices right after); callers trim."""
     want = {w.lower() for w in SEASON_YEAR.findall(role)}
     want_words = set(normalize_title(role))
     for j in jobs:
         title = _without_company(j["title"], company)
         j["score"] = title_score(role, title)
         j["covers"] = covers(role, title)
-        j["exact"] = bool(want_words) and set(normalize_title(title)) == want_words
+        j["exact"] = bool(want_words) and set(_words(role, title)[1]) == want_words
         if DEGREE.search(title) and not DEGREE.search(role):  # a PhD or master's posting isn't the default intern one
             j["score"] = round(j["score"] - 0.08, 3)
         if COOP.search(title) and INTERN.search(role) and not COOP.search(role):
@@ -914,58 +1012,88 @@ def rank(jobs: list[dict], role: str, location: str | None = None, limit: int = 
         if location and location_matches(location, j.get("location")):
             j["score"] = round(j["score"] + 0.05, 3)
     jobs.sort(key=lambda j: -j["score"])
+    if not jobs:
+        return jobs
     best = jobs[0]["title"]
     same_title = [j for j in jobs if same_role(j["title"], best)]
-    return same_title + [j for j in jobs if not same_role(j["title"], best)]  # callers trim what they show
+    return same_title + [j for j in jobs if not same_role(j["title"], best)]
+
+
+def closest(jobs: list[dict], role: str, location: str | None = None, company: str | None = None,
+            n: int = 3) -> list[dict]:
+    """The postings nearest a role when none matches: the best title first, the student's place breaking ties."""
+    ranked = rank(list(jobs), role, location, company)
+    if not location or is_us_place(location):
+        ranked = [j for j in ranked if is_us(j.get("location"))] or ranked
+    near = (lambda j: not location_matches(location, j.get("location"))) if location else (lambda j: False)
+    return sorted(ranked, key=lambda j: (-round(j["score"], 2), near(j)))[:n]
+
+
+def _company_jobs(slug, role):
+    """(postings, searched): searched means a career site we query by keyword, so an empty answer is final."""
+    jobs = []
+    if slug in AMAZON_NAMES:
+        jobs += _list_amazon(role)
+    if slug in WORKDAY_ALIASES:
+        jobs += _list_workday(WORKDAY_ALIASES[slug], role)
+    if slug in EIGHTFOLD_ALIASES:
+        jobs += _list_eightfold(EIGHTFOLD_ALIASES[slug], role)
+    if slug in JOBS_API_SITES:
+        jobs += _list_jobs_api(slug, role)
+    if slug in ORACLE_ALIASES:
+        jobs += _list_oracle(ORACLE_ALIASES[slug], role)
+    known = slug in AMAZON_NAMES or slug in WORKDAY_ALIASES or slug in EIGHTFOLD_ALIASES or \
+        slug in JOBS_API_SITES or slug in ORACLE_ALIASES
+    if known and (jobs or INTERN.search(role)):
+        return jobs, True
+    if not jobs:
+        for lister in (_list_greenhouse, _list_lever, _list_ashby):
+            jobs += lister(slug)
+    if not jobs:
+        jobs += _list_smartrecruiters(slug, role)
+    return jobs, False
+
+
+def _no_intern(company, role, slug, searched, jobs, location):
+    """No intern posting for the role: offer the company's closest intern postings (else its closest jobs)."""
+    interns = []
+    if searched and slug not in WORKDAY_ALIASES:  # a keyword search only found full-time jobs: ask for interns
+        interns = [j for j in _company_jobs(slug, "intern")[0] if INTERN.search(j.get("title") or "")]
+    pool = interns or jobs
+    return BoardError("no_intern", f"{company} has no open intern posting matching '{role}' right now",
+                      candidates=closest(pool, role, location, company) if pool else [])
 
 
 @_shape_safe
-def search(company: str, role: str, location: str | None = None, limit: int = 5) -> list[dict]:
+def search(company: str, role: str, location: str | None = None) -> list[dict]:
     """Candidate postings for a company + role, best title match first."""
-    jobs = []
+    jobs, slug, searched = [], None, False
     for slug in slug_candidates(company):
-        if slug in AMAZON_NAMES:
-            jobs += _list_amazon(role)
-        if slug in WORKDAY_ALIASES:
-            jobs += _list_workday(WORKDAY_ALIASES[slug], role)
-        if slug in EIGHTFOLD_ALIASES:
-            jobs += _list_eightfold(EIGHTFOLD_ALIASES[slug], role)
-        if slug in JOBS_API_SITES:
-            jobs += _list_jobs_api(slug, role)
-        if slug in ORACLE_ALIASES:
-            jobs += _list_oracle(ORACLE_ALIASES[slug], role)
-        supported = slug in AMAZON_NAMES or slug in WORKDAY_ALIASES or slug in EIGHTFOLD_ALIASES or \
-            slug in JOBS_API_SITES or slug in ORACLE_ALIASES
-        if supported and not jobs and INTERN.search(role):
-            raise BoardError("no_intern", f"{company} has no open intern posting matching '{role}' right now")
-        if not jobs:
-            for lister in (_list_greenhouse, _list_lever, _list_ashby):
-                jobs += lister(slug)
-        if not jobs:
-            jobs += _list_smartrecruiters(slug, role)
-        if jobs:
+        jobs, searched = _company_jobs(slug, role)
+        if jobs or searched:
             break
-    if not jobs:
+    if not jobs and not (searched and INTERN.search(role)):
         raise BoardError("not_found", f"no public job board found for '{company}' (searched Greenhouse, Lever, Ashby, "
-                                      "SmartRecruiters, Amazon, Microsoft, Lockheed Martin, State Farm and 11 Workday sites)")
+                                      "SmartRecruiters, Amazon, Microsoft, Lockheed Martin, State Farm and 11 Workday "
+                                      "sites)")
     if INTERN.search(role):
         interns = [j for j in jobs if INTERN.search(j.get("title") or "")]
         if not interns:
-            raise BoardError("no_intern", f"{company} has no open intern posting matching '{role}' right now",
-                             candidates=order_for_student(rank(jobs, role, location, 3), location)[:3])
+            raise _no_intern(company, role, slug, searched, jobs, location)
         jobs = interns
-    ranked = rank(jobs, role, location, limit, company)
+    ranked = rank(jobs, role, location, company)
     relevant = [j for j in ranked if j["score"] >= 0.7 or j.get("covers") or _covers_discipline(role, j["title"])]
     if INTERN.search(role) and not relevant:
         raise BoardError("no_intern", f"{company} has no open intern posting close to '{role}' right now",
-                         candidates=order_for_student(ranked, location)[:3])
+                         candidates=closest(ranked, role, location, company))
     if not relevant:
         return ranked
     _workday_offices(relevant[:30])
-    relevant = rank(relevant, role, location, limit, company)  # again, now that every office is known
+    relevant = rank(relevant, role, location, company)  # again, now that every office is known
     for j in relevant:
         j["relevant"] = True
-    if INTERN.search(role) and location and is_us_place(location) and not any(is_us(j.get("location")) for j in relevant):
+    if INTERN.search(role) and location and is_us_place(location) and \
+            not any(is_us(j.get("location")) for j in relevant):
         raise BoardError("no_intern", f"{company} has no '{role}' posting in the US right now; the closest are abroad",
                          candidates=relevant[:3])
     return relevant
@@ -982,7 +1110,8 @@ def _workday_offices(cands):
     def resolve(c):
         f = c["fetch"]
         try:
-            status, d = get_json(f"https://{f['slug']}.{f['wd']}.myworkdayjobs.com/wday/cxs/{f['slug']}/{f['site']}/{f['job_path']}")
+            base = f"https://{f['slug']}.{f['wd']}.myworkdayjobs.com/wday/cxs/{f['slug']}/{f['site']}"
+            status, d = get_json(f"{base}/{f['job_path']}")
             c["location"] = _workday_location((d or {}).get("jobPostingInfo") or {}) or c["location"]
         except BoardError:
             pass
@@ -1017,7 +1146,19 @@ NON_US = re.compile(r"\b(canada|united kingdom|uk|gbr|england|scotland|ireland|i
                     r"berlin|munich|paris|amsterdam|dublin|london|toronto|vancouver|montreal|bengaluru|bangalore|"
                     r"hyderabad|pune|chennai|mumbai|delhi|noida|gurgaon|shanghai|beijing|shenzhen|tokyo|seoul|"
                     r"taipei|sydney|tel aviv|haifa|warsaw|gdansk|krakow|bucharest|madrid|barcelona|zurich|"
-                    r"penang|kulim|manila|taguig|cape town|sao paulo|guadalajara)\b", re.I)
+                    r"penang|kulim|manila|taguig|cape town|sao paulo|guadalajara|kraków|zürich|são paulo|"
+                    r"europe|emea|latam|apac|asia|africa|middle east|oceania|nordics|dach|benelux|"
+                    r"switzerland|austria|sweden|norway|denmark|finland|belgium|portugal|czechia|czech republic|"
+                    r"hungary|greece|turkey|egypt|nigeria|kenya|uae|united arab emirates|saudi arabia|qatar|"
+                    r"new zealand|indonesia|thailand|peru|costa rica|ukraine|serbia|bulgaria|croatia|estonia|"
+                    r"latvia|lithuania|slovakia|pakistan|bangladesh|sri lanka|"
+                    r"hamburg|frankfurt|cologne|köln|stuttgart|düsseldorf|dusseldorf|dresden|leipzig|karlsruhe|"
+                    r"nuremberg|nürnberg|walldorf|bogota|bogotá|medellin|medellín|kolkata|ahmedabad|kochi|gurugram|"
+                    r"jaipur|coimbatore|indore|chandigarh|vadodara|lisbon|prague|brno|budapest|vienna|stockholm|oslo|"
+                    r"copenhagen|helsinki|brussels|geneva|istanbul|dubai|cairo|lagos|nairobi|johannesburg|"
+                    r"buenos aires|monterrey|cluj|kyiv|lviv|belgrade|sofia|riga|vilnius|tallinn|edinburgh|galway|"
+                    r"lyon|toulouse|rotterdam|eindhoven|hong kong|kuala lumpur|jakarta|bangkok|hanoi|ho chi minh|"
+                    r"auckland)\b", re.I)
 
 
 STATE_NAME = re.compile(r"\b(" + "|".join(sorted(STATES, key=len, reverse=True)) + r")\b", re.I)
@@ -1027,6 +1168,43 @@ def is_us(location: str | None) -> bool:
     parts = [p for p in re.split(r"[;|]", str(location or "")) if p.strip()] or [""]
     return any(not NON_US.search(p) and bool(US_STATE.search(p) or US_PLACE.search(p) or STATE_NAME.search(p))
                for p in parts)
+
+
+# Cities a student might name for a state, so "Arizona" finds "AZ (Phoenix, Tempe)" in a posting.
+STATE_CITIES = {
+    "AZ": ["phoenix", "tempe", "chandler", "scottsdale", "mesa", "tucson", "gilbert", "glendale"],
+    "WA": ["seattle", "redmond", "bellevue", "kirkland"], "OR": ["portland", "hillsboro", "beaverton"],
+    "CA": ["san francisco", "san jose", "santa clara", "sunnyvale", "mountain view", "palo alto", "menlo park",
+           "los angeles", "san diego", "irvine", "folsom", "oakland"],
+    "TX": ["austin", "dallas", "houston", "plano", "irving", "richardson", "san antonio"], "NY": ["new york", "nyc"],
+    "CO": ["denver", "boulder", "colorado springs"], "GA": ["atlanta"], "MA": ["boston", "cambridge"],
+    "IL": ["chicago", "bloomington"], "FL": ["miami", "orlando", "tampa", "melbourne"],
+    "UT": ["salt lake city", "lehi"], "VA": ["arlington", "reston", "mclean", "falls church", "herndon"],
+    "NC": ["charlotte", "raleigh"],
+}
+MULTI_SITE = re.compile(r"\b(?:multiple|several|various|many|any of our) (?:u\.?s\.? )?(?:sites|locations|offices|"
+                        r"campuses)\b|\b(?:sites|locations|offices) (?:across|throughout) the (?:u\.?s\b|united states|"
+                        r"country)", re.I)
+
+
+def place_line(place: str | None, lines: list[str]) -> int | None:
+    """The first posting line naming the student's place (the state, its code beside a city, or one of its cities),
+    or None. "Arizona State University" doesn't count."""
+    want = (place or "").strip()
+    code = STATES.get(want.lower()) or (want.upper() if want.upper() in STATES.values() else None)
+    names = [want.lower()] if not code else [n for n, c in STATES.items() if c == code] + STATE_CITIES.get(code, [])
+    names = [n for n in names if len(n) > 2]
+    name_rx = re.compile(r"\b(?:" + "|".join(map(re.escape, names)) + r")\b(?! state univ)", re.I) if names else None
+    code_rx = re.compile(rf"(?:,\s*{code}\b|\b{code}\s*\(|\b{code}\s*,)") if code else None
+    for i, line in enumerate(lines, start=1):
+        if (name_rx and name_rx.search(line)) or (code_rx and code_rx.search(line)):
+            return i
+    return None
+
+
+def multi_site_line(lines: list[str]) -> int | None:
+    """The first line saying the role is open at several US sites, or None."""
+    return next((i for i, line in enumerate(lines, start=1) if MULTI_SITE.search(line)), None)
 
 
 def is_us_place(text: str | None) -> bool:
@@ -1040,7 +1218,8 @@ def location_matches(wanted: str | None, location: str | None) -> bool:
     want, have = (wanted or "").strip().lower(), str(location or "")
     if not want or not have:
         return False
-    if re.search(rf"\b{re.escape(want)}\b", have, re.I) and not (len(want) == 2 and want.upper() not in STATES.values()):
+    if re.search(rf"\b{re.escape(want)}\b", have, re.I) and \
+            not (len(want) == 2 and want.upper() not in STATES.values()):
         return True
     code = STATES.get(want) or (want.upper() if want.upper() in STATES.values() else None)
     if code:
@@ -1066,7 +1245,8 @@ def choose(candidates: list[dict], min_score: float = 0.75, margin: float = 0.06
     top = candidates[0]
     if location:
         # A posting in the student's place whose title has every word of the role is a confident match.
-        good = [c for c in candidates if c["score"] >= top["score"] - 0.15 and (c["score"] >= min_score or c.get("covers"))]
+        good = [c for c in candidates
+                if c["score"] >= top["score"] - 0.15 and (c["score"] >= min_score or c.get("covers"))]
         local = [c for c in good if location_matches(location, c.get("location"))]
         if local and all(same_role(c["title"], local[0]["title"]) for c in local):
             return local[0]
@@ -1090,7 +1270,8 @@ def choose(candidates: list[dict], min_score: float = 0.75, margin: float = 0.06
         return None
     if not us and not location:
         # Nothing for this exact title in the US: a US posting that has every word of the role still beats it.
-        alt = [c for c in candidates if is_us(c.get("location")) and (c.get("covers") or c["score"] >= top["score"] - 0.15)]
+        alt = [c for c in candidates
+               if is_us(c.get("location")) and (c.get("covers") or c["score"] >= top["score"] - 0.15)]
         if alt and all(same_role(c["title"], alt[0]["title"]) for c in alt):
             return alt[0]
         if alt:
