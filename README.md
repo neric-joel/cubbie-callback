@@ -45,7 +45,7 @@ also asked to see where Cubbie gets its facts, and said phone calls felt rude or
 | Prep is generic | Reads the real posting from the company's job board; the brief, questions and scores all come from it |
 | "Where did you get that?" | Every skill, fact and missed point quotes the posting with its line number; the brief ends with the numbered posting |
 | Calls feel rude or hang up | The call reads a fixed, calm script (tough means harder questions, never a harsher voice), and the answer comes back as a voice note, so nothing depends on the call staying open |
-| Wants the invite found in the inbox | Narrow, opt-in search of email events and Gmail; tells an invite from a scheduling request, an online assessment or a rejection |
+| Wants the invite found in the inbox | Narrow, opt-in search of email events and Gmail; tells an invite from a scheduling request, an online assessment, an offer, an application receipt or a rejection |
 
 ## Tested on a real Cubbie, Oct 24 2026
 
@@ -147,7 +147,7 @@ says which; if several different roles match, it asks.
 invite email / job link / "interview with X"
         |
         v
-callback.py invite   is it an invite, a scheduling request, an assessment or a rejection? any job links?
+callback.py invite   invite, scheduling request, assessment, offer, receipt or rejection? any job links?
 callback.py fetch    public job-board API (no key) -> numbered plain-text lines, saved under HOME
         |            Greenhouse, Lever, Ashby, SmartRecruiters, Workday, Eightfold, Oracle, amazon.jobs, State Farm,
         |            or any page with schema.org JobPosting data
@@ -158,7 +158,7 @@ callback.py brief    Markdown brief -> Cubbie makes the PDF: top skills with quo
                      start date, graduation, citizenship), what's NOT in the posting (ask your recruiter),
                      practice questions, a pitch outline, the numbered posting
 callback.py question two questions per top skill (a technical one and "walk me through a project"), plus company
-                     and behavioral ones; call script per tone; remembers which question is waiting for an answer
+                     and behavioral ones; call script per tone; remembers which questions wait for an answer
 callback.py score    checks the transcript for each key point (ignoring "I don't know X"), quotes the posting line
                      behind each miss, flags filler words, short answers and "we" instead of "I"; redos show progress
 ```
@@ -184,8 +184,7 @@ Calendar (prep blocks), reminders and phone calls (mock interviews, a 60-second 
   cancel this Skill's scheduled calls first.
 - **Tested**: 119 offline tests (`python -m unittest discover -s tests -v`) with fake responses from every source,
   closed, unreachable, rate-limited and hostile pages, ambiguous and intern-less searches, invite classification and
-  scoring. CI also runs the sample flow and the Cubbie kit's Skill validator. Reviewed by three judge agents (a Cubbie
-  engineer, a security and bug hunter, and a student), and their findings fixed.
+  scoring. CI also runs the sample flow and the Cubbie kit's Skill validator on Python 3.10 to 3.13.
 
 ## Try it without an interview
 
@@ -226,6 +225,7 @@ interview-callback/          the Skill (this folder is what Cubbie installs)
   assets/                    skills dictionary, question bank, sample posting, invite and answer
   references/gmail-search.md the email query
 tests/                       offline unit tests
+docs/                        the demo video and its poster frame
 ```
 
 MIT license.
